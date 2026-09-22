@@ -9,11 +9,12 @@ import {
 } from "@mui/material";
 import { getRegardingOptions } from "../helperFunc"; // Import the function
 
-const RegardingField = ({ formData, handleInputChange }) => {
+const RegardingField = ({ formData, handleInputChange, picklistConfig }) => {
   const existingValue = formData.Regarding;
   const predefinedOptions = getRegardingOptions(
     formData.Type_of_Activity,
-    existingValue
+    existingValue,
+    picklistConfig
   ); // Get dynamic options based on type
 
   const [selectedValue, setSelectedValue] = useState(existingValue);
@@ -28,7 +29,7 @@ const RegardingField = ({ formData, handleInputChange }) => {
       setSelectedValue(existingValue);
       setManualInput("");
     }
-  }, [formData.Type_of_Activity, existingValue]);
+  }, [formData.Type_of_Activity, existingValue, picklistConfig]);
 
   const handleSelectChange = (event) => {
     const value = event.target.value;

@@ -235,6 +235,7 @@ const EditActivityModal = ({
   ZOHO,
   users,
   updateEventState, // provided by parent/context; updates events + cache immutably (backward compatibility)
+  picklistConfig,
 }) => {
   // --- Global State Management (Zustand) ---
   // Use store directly for optimistic updates
@@ -479,6 +480,7 @@ const EditActivityModal = ({
             selectedRowData={selectedRowData}
             ZOHO={ZOHO}
             isEditMode={true} // Pass true if it's the EditModal, false otherwise
+            picklistConfig={picklistConfig}
           />
           <Box display="flex" justifyContent="space-between" mt={2}>
             <Button size="small" onClick={handleBack}>

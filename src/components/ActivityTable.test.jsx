@@ -76,6 +76,7 @@ function TableHarness({
   initialCustomDateRange = null,
   onFilterDateChange = () => {},
   onCustomDateRangeChange = () => {},
+  picklistConfig,
 }) {
   const [filterDate, setFilterDate] = React.useState(initialFilterDate);
   const [customDateRange, setCustomDateRange] = React.useState(
@@ -102,6 +103,7 @@ function TableHarness({
       customDateRange={customDateRange}
       setCustomDateRange={handleCustomDateRangeChange}
       setEvents={() => {}}
+      picklistConfig={picklistConfig}
     />
   );
 }
@@ -200,6 +202,24 @@ describe("ActivityTable", () => {
     expect(screen.getByText("Alpha Meeting")).toBeInTheDocument();
     expect(screen.queryByText("Low Meeting")).not.toBeInTheDocument();
     expect(screen.getByText("Filter By Type, Priority")).toBeInTheDocument();
+  });
+
+  it("uses configured Type filters while retaining types on existing events", async () => {
+    useEventsStore.setState({ events: [makeEvent()] });
+    const { user } = renderTable({
+      picklistConfig: {
+        types: ["Appointment Test"],
+        _source: "custom_module",
+      },
+    });
+
+    await user.click(screen.getByRole("combobox", { name: "Type" }));
+
+    expect(
+      screen.getByRole("option", { name: "Appointment Test" })
+    ).toBeVisible();
+    expect(screen.getByRole("option", { name: "Meeting" })).toBeVisible();
+    expect(screen.queryByRole("option", { name: "Call" })).not.toBeInTheDocument();
   });
 
   it("uses an exact normalized owner match and can select all users", async () => {

@@ -4,6 +4,7 @@ import ActivityTable from "./components/ActivityTable";
 import { CircularProgress, Box } from "@mui/material";
 import DateRangeModal from "./components/atom/DateRangeModal";
 import useEventsStore from "./store/eventsStore";
+import { fetchPicklistConfig } from "./services/picklistConfigService";
 
 const ZOHO = window.ZOHO;
 
@@ -29,6 +30,7 @@ function App() {
   const [staff, setStaff] = useState([]);
   const [recentColors, setRecentColor] = useState("");
   const [loggedInUser, setLoggedInUser] = useState(null);
+  const [picklistConfig, setPicklistConfig] = useState(null);
   
   // Filter States
   const [filterDate, setFilterDate] = useState("Default");
@@ -62,6 +64,19 @@ function App() {
     if (zohoLoaded) {
       fetchInitialMetadata();
     }
+  }, [zohoLoaded]);
+
+  useEffect(() => {
+    if (!zohoLoaded) return undefined;
+
+    let cancelled = false;
+    fetchPicklistConfig(ZOHO).then((config) => {
+      if (!cancelled) setPicklistConfig(config);
+    });
+
+    return () => {
+      cancelled = true;
+    };
   }, [zohoLoaded]);
 
   const fetchInitialMetadata = async () => {
@@ -453,11 +468,12 @@ function App() {
         setCustomDateRange,
         recentColors,
         setRecentColor,
+        picklistConfig,
         // Expose the updater so child components can fix state without refetching
         updateEventState, 
       }}
     >
-      {loading ? (
+      {loading || !picklistConfig ? (
         <Box sx={{ display: "flex", justifyContent: "center", alignItems: "center", height: "100vh" }}>
           <CircularProgress />
         </Box>
@@ -476,6 +492,7 @@ function App() {
           customDateRange={customDateRange}
           setCustomDateRange={setCustomDateRange}
           updateEventState={updateEventState} // Pass this down
+          picklistConfig={picklistConfig}
         />
       )}
       <DateRangeModal

@@ -24,7 +24,16 @@ import { DateTimePicker, LocalizationProvider } from "@mui/x-date-pickers";
 import { DesktopDateTimePicker } from '@mui/x-date-pickers/DesktopDateTimePicker';
 import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
 import dayjs from "dayjs";
-import { reminderMapping } from "./helperFunc";
+import { getRegardingOptions, reminderMapping } from "./helperFunc";
+import {
+  DEFAULT_ACTIVITY_TYPES,
+  getDurationOptionsFromConfig,
+  getTypeOptionsFromConfig,
+} from "../services/picklistConfigService";
+
+const activityTypeResources = new Map(
+  DEFAULT_ACTIVITY_TYPES.map((type, index) => [type, index + 1])
+);
 
 const commonTextStyles = {
   fontSize: "9pt", // Set the font size to 9pt
@@ -110,6 +119,7 @@ const FirstComponent = ({
   selectedRowData,
   ZOHO,
   isEditMode, // New prop to check if it's edit mode
+  picklistConfig,
 }) => {
   const { events, filterDate, setFilterDate, recentColors, setRecentColor } =
     useContext(ZohoContext);
@@ -133,25 +143,18 @@ const FirstComponent = ({
   // }
   // }, [formData.Remind_Participants, handleInputChange]);
 
-  const [activityType] = useState([
-    { type: "Meeting", resource: 1 },
-    { type: "To-Do", resource: 2 },
-    { type: "Appointment", resource: 3 },
-    { type: "Boardroom", resource: 4 },
-    { type: "Call Billing", resource: 5 },
-    { type: "Email Billing", resource: 6 },
-    { type: "Initial Consultation", resource: 7 },
-    { type: "Call", resource: 8 },
-    { type: "Mail", resource: 9 },
-    { type: "Meeting Billing", resource: 10 },
-    { type: "Personal Activity", resource: 11 },
-    { type: "Room 1", resource: 12 },
-    { type: "Room 2", resource: 13 },
-    { type: "Room 3", resource: 14 },
-    { type: "To Do Billing", resource: 15 },
-    { type: "Vacation", resource: 16 },
-    { type: "Other", resource: 17 },
-  ]);
+  const activityType = React.useMemo(() => {
+    const configuredTypes = [...getTypeOptionsFromConfig(picklistConfig)];
+    const currentType = formData.Type_of_Activity;
+    if (isEditMode && currentType && !configuredTypes.includes(currentType)) {
+      configuredTypes.unshift(currentType);
+    }
+
+    return configuredTypes.map((type) => ({
+      type,
+      resource: activityTypeResources.get(type),
+    }));
+  }, [formData.Type_of_Activity, isEditMode, picklistConfig]);
 
   function addMinutesToDateTime(formatType, durationInMinutes) {
     // // Create a new Date object using the start time from formData
@@ -185,6 +188,41 @@ const FirstComponent = ({
       handleInputChange("Reminder_Text", durationInMinutes.name);
     }
   }
+
+  useEffect(() => {
+    if (isEditMode || picklistConfig?._source !== "custom_module") return;
+
+    const configuredTypes = getTypeOptionsFromConfig(picklistConfig);
+    if (
+      configuredTypes.length > 0 &&
+      !configuredTypes.includes(formData.Type_of_Activity)
+    ) {
+      const nextType = configuredTypes[0];
+      handleInputChange("Type_of_Activity", nextType);
+
+      const resource = activityTypeResources.get(nextType);
+      if (resource != null) handleInputChange("resource", resource);
+
+      const regardingOptions = getRegardingOptions(
+        nextType,
+        "",
+        picklistConfig
+      );
+      handleInputChange("Regarding", regardingOptions[0] || "");
+    }
+
+    const configuredDurations = getDurationOptionsFromConfig(picklistConfig);
+    const currentDuration = Number.parseInt(formData.Duration_Min, 10);
+    if (
+      configuredDurations.length > 0 &&
+      !configuredDurations.includes(currentDuration)
+    ) {
+      handleInputChange("Duration_Min", configuredDurations[0]);
+      addMinutesToDateTime("Duration_Min", configuredDurations[0]);
+    }
+    // Apply newly loaded CRM defaults once. Subsequent form changes are user-driven.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isEditMode, picklistConfig]);
 
   useEffect(() => {
     const initializeDefaultValues = () => {
@@ -300,10 +338,17 @@ const FirstComponent = ({
     const selectedActivity = activityType.find(
       (item) => item.type === selectedType
     );
-    if (selectedActivity) {
-      handleInputChange("Type_of_Activity", selectedActivity.type);
+    handleInputChange("Type_of_Activity", selectedType);
+    if (selectedActivity?.resource != null) {
       handleInputChange("resource", selectedActivity.resource);
     }
+
+    const regardingOptions = getRegardingOptions(
+      selectedType,
+      "",
+      picklistConfig
+    );
+    handleInputChange("Regarding", regardingOptions[0] || "");
   };
 
   const handleClick = () => {
@@ -397,7 +442,17 @@ const FirstComponent = ({
     },
   };
 
-  const durations = Array.from({ length: 24 }, (_, i) => (i + 1) * 10);
+  const configuredDurations = getDurationOptionsFromConfig(picklistConfig);
+  const parsedDuration = Number.parseInt(formData.Duration_Min, 10);
+  const selectedDuration = Number.isFinite(parsedDuration)
+    ? parsedDuration
+    : "";
+  const durations =
+    isEditMode &&
+    Number.isFinite(parsedDuration) &&
+    !configuredDurations.includes(parsedDuration)
+      ? [parsedDuration, ...configuredDurations]
+      : configuredDurations;
 
   const now = new Date();
 
@@ -525,11 +580,19 @@ const FirstComponent = ({
               disabled={formData.Banner ? true : false}
               slotProps={{ textField: { size: "small" } }}
               onChange={(e) => {
-                const addedHour = new Date(dayjs(e.$d).add(1, "hour").toDate());
+                const nextDuration =
+                  isEditMode && Number.isFinite(selectedDuration)
+                    ? selectedDuration
+                    : configuredDurations.includes(selectedDuration)
+                      ? selectedDuration
+                      : configuredDurations[0] ?? 60;
+                const addedHour = new Date(
+                  dayjs(e.$d).add(nextDuration, "minute").toDate()
+                );
                 handleInputChange("start", e.$d);
                 handleInputChange("end", addedHour);
                 setEndValue(dayjs(addedHour));
-                handleInputChange("Duration_Min", 60);
+                handleInputChange("Duration_Min", nextDuration);
                 console.log(e.$d);
                 console.log(addedHour);
               }}
@@ -566,7 +629,7 @@ const FirstComponent = ({
               id="demo-simple-select-standard"
               label="Duration"
               fullWidth
-              value={formData.Duration_Min}
+              value={selectedDuration}
               disabled={formData.Banner ? true : false}
               InputLabelProps={{ shrink: true }}
               onChange={(e) => {
@@ -704,6 +767,7 @@ const FirstComponent = ({
             formData={formData}
             handleInputChange={handleInputChange}
             selectedRowData={selectedRowData}
+            picklistConfig={picklistConfig}
           />
         </Grid>
         <Grid size={12}>

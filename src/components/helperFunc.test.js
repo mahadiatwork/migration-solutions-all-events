@@ -100,6 +100,30 @@ describe("activity mappings", () => {
     expect(getResultBasedOnActivityType2("Unknown")).toEqual(["Note"]);
   });
 
+  it("prefers CRM-managed Result and Regarding options when configured", () => {
+    const config = {
+      results: {
+        Appointment: ["Appointment Finished", "Appointment Cancelled"],
+      },
+      regarding: {
+        Appointment: ["Appointment Test", "Dentist Appointment"],
+      },
+    };
+
+    expect(getResultBasedOnActivityType("Appointment", config)).toBe(
+      "Appointment Finished"
+    );
+    expect(getResultBasedOnActivityType2("Appointment", config)).toEqual([
+      "Appointment Finished",
+      "Appointment Cancelled",
+    ]);
+    expect(getRegardingOptions("Appointment", "Legacy value", config)).toEqual([
+      "Legacy value",
+      "Appointment Test",
+      "Dentist Appointment",
+    ]);
+  });
+
   it("preserves a custom Regarding value without duplicating known values", () => {
     expect(getRegardingOptions("Call", "Custom reason")[0]).toBe(
       "Custom reason"

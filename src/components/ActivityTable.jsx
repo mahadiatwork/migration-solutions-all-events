@@ -37,6 +37,7 @@ import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
 import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
 import useEventsStore from "../store/eventsStore";
 import { ZohoContext } from "../App";
+import { getTypeOptionsFromConfig } from "../services/picklistConfigService";
 
 // Extend dayjs with plugins
 dayjs.extend(utc);
@@ -93,6 +94,26 @@ const headCells = [
 ];
 
 const noSort = ["duration", "time"];
+
+const fallbackTypeFilterOptions = [
+  "Meeting",
+  "To-Do",
+  "Call",
+  "Appointment",
+  "Boardroom",
+  "Call Billing",
+  "Email Billing",
+  "Initial Consultation",
+  "Mail",
+  "Meeting Billing",
+  "Personal Activity",
+  "Room 1",
+  "Room 2",
+  "Room 3",
+  "Todo Billing",
+  "Vacation",
+  "Other",
+];
 
 const convertDate = (date)=>{
   const [day, month, year] = date.split("/");
@@ -339,6 +360,7 @@ export default function ScheduleTable({
   customDateRange,
   setCustomDateRange,
   updateEventState, // Keep for backward compatibility, but will use store
+  picklistConfig,
 }) {
   const context = React.useContext(ZohoContext);
   // --- Global State Management (Zustand) ---
@@ -415,25 +437,17 @@ export default function ScheduleTable({
     { label: "Custom Range", value: "Custom Range" }, // New custom range option
   ];
 
-  const typeOptions = [
-    "Meeting",
-    "To-Do",
-    "Call",
-    "Appointment",
-    "Boardroom",
-    "Call Billing",
-    "Email Billing",
-    "Initial Consultation",
-    "Mail",
-    "Meeting Billing",
-    "Personal Activity",
-    "Room 1",
-    "Room 2",
-    "Room 3",
-    "Todo Billing",
-    "Vacation",
-    "Other",
-  ];
+  const typeOptions = React.useMemo(() => {
+    const configuredTypes =
+      picklistConfig?._source === "custom_module"
+        ? getTypeOptionsFromConfig(picklistConfig)
+        : fallbackTypeFilterOptions;
+    const typesAlreadyInUse = events
+      .map((event) => event?.Type_of_Activity)
+      .filter(Boolean);
+
+    return [...new Set([...configuredTypes, ...typesAlreadyInUse])];
+  }, [events, picklistConfig]);
 
   const priorityOptions = ["Low", "Medium", "High"];
 
@@ -1487,6 +1501,7 @@ export default function ScheduleTable({
           users={users}
           setEvents={setEvents}
           filterDate={filterDate}
+          picklistConfig={picklistConfig}
         />
       )}
 
@@ -1498,6 +1513,7 @@ export default function ScheduleTable({
           ZOHO={ZOHO}
           users={users}
           updateEventState={handleUpdateEventState}
+          picklistConfig={picklistConfig}
         />
       )}
 
@@ -1511,6 +1527,7 @@ export default function ScheduleTable({
           setEvents={setEvents}
           setSelectedRowIndex={setSelectedRowIndex}
           setHighlightedRow={setHighlightedRow}
+          picklistConfig={picklistConfig}
         />
       )}
 

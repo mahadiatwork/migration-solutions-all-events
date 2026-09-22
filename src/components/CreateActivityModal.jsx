@@ -313,6 +313,7 @@ const CreateActivityModal = ({
   setEvents, // Keep for backward compatibility
   setSelectedRowIndex,
   setHighlightedRow,
+  picklistConfig,
 }) => {
   // --- Global State Management (Zustand) ---
   const { addEvent } = useEventsStore();
@@ -642,6 +643,7 @@ const CreateActivityModal = ({
             handleInputChange={handleInputChange}
             users={users}
             ZOHO={ZOHO}
+            picklistConfig={picklistConfig}
           />
           <Box display="flex" justifyContent="space-between" mt={2}>
             <Button size="small" disabled>

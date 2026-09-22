@@ -70,11 +70,27 @@ describe("App Zoho integration", () => {
     zoho.CRM.API.getOrgVariable.mockResolvedValue({
       Success: { Content: '["#123456"]' },
     });
-    zoho.CRM.API.getAllRecords.mockResolvedValue({
-      users: [
-        { id: "u1", full_name: "Ada Lovelace" },
-        { id: "u2", full_name: "Grace Hopper" },
-      ],
+    zoho.CRM.API.getAllRecords.mockImplementation(({ Entity }) => {
+      if (Entity === "Widget_Picklist_Config") {
+        return Promise.resolve({
+          data: [
+            {
+              Name: "Meeting",
+              Category: "Type",
+              Sort_Order: 10,
+              Active: true,
+            },
+          ],
+          info: { more_records: false },
+        });
+      }
+
+      return Promise.resolve({
+        users: [
+          { id: "u1", full_name: "Ada Lovelace" },
+          { id: "u2", full_name: "Grace Hopper" },
+        ],
+      });
     });
     zoho.CRM.API.searchRecord.mockResolvedValue({
       data: [
@@ -142,12 +158,14 @@ describe("App Zoho integration", () => {
       per_page: 100,
       page: 1,
     });
-    expect(screen.getByTestId("users")).toHaveTextContent(
-      "Ada Lovelace|Grace Hopper"
-    );
-    expect(screen.getByTestId("logged-user")).toHaveTextContent(
-      "Ada Lovelace|Generic"
-    );
+    await waitFor(() => {
+      expect(screen.getByTestId("users")).toHaveTextContent(
+        "Ada Lovelace|Grace Hopper"
+      );
+      expect(screen.getByTestId("logged-user")).toHaveTextContent(
+        "Ada Lovelace|Generic"
+      );
+    });
 
     expect(zoho.CRM.CONNECTION.invoke).toHaveBeenCalledTimes(2);
     expect(zoho.CRM.CONNECTION.invoke.mock.calls[0][1].url).toContain("page=1");

@@ -22,7 +22,10 @@ import {
 } from "@mui/material";
 import "react-quill/dist/quill.snow.css";
 import { useEffect } from "react";
-import { getResultBasedOnActivityType, getResultBasedOnActivityType2, typeOptions } from "./helperFunc";
+import {
+  getResultBasedOnActivityType,
+  getResultBasedOnActivityType2,
+} from "./helperFunc";
 import useEventsStore from "../store/eventsStore";
 
 export default function ClearActivityModal({
@@ -32,6 +35,7 @@ export default function ClearActivityModal({
   ZOHO,
   setEvents, // Keep for backward compatibility
   filterDate, // Add filterDate prop to know current filter
+  picklistConfig,
 }) {
   // --- Global State Management (Zustand) ---
   const { updateEvent, removeEvent, updateCacheEntry, removeEventFromCache, getCache, setEvents: setStoreEvents } = useEventsStore();
@@ -100,7 +104,12 @@ export default function ClearActivityModal({
   const handleEraseChange = (event) => {
     setEraseChecked(event.target.checked);
     setClearChecked(false);
-    setResult(getResultBasedOnActivityType(selectedRowData.Type_of_Activity));
+    setResult(
+      getResultBasedOnActivityType(
+        selectedRowData.Type_of_Activity,
+        picklistConfig
+      )
+    );
   };
 
   const [existingHistory, setExistingHistory] = React.useState([]);
@@ -416,7 +425,12 @@ export default function ClearActivityModal({
   const handleClearChange = (event) => {
     setClearChecked(event.target.checked); // Update the checkbox state
     setEraseChecked(false); // Uncheck the "Erase" checkbox when "Clear" is changed
-    setResult(getResultBasedOnActivityType(selectedRowData.Type_of_Activity));
+    setResult(
+      getResultBasedOnActivityType(
+        selectedRowData.Type_of_Activity,
+        picklistConfig
+      )
+    );
 
     if (!event.target.checked) {
       // Log data when the checkbox is unchecked
@@ -489,7 +503,10 @@ export default function ClearActivityModal({
   
   useEffect(() => {
     if (selectedRowData?.Type_of_Activity) {
-      const filteredOptions = getResultBasedOnActivityType2(selectedRowData.Type_of_Activity);
+      const filteredOptions = getResultBasedOnActivityType2(
+        selectedRowData.Type_of_Activity,
+        picklistConfig
+      );
       setFilteredActivities(filteredOptions);
   
       // Set the first option as the default if no result is already set
@@ -497,7 +514,12 @@ export default function ClearActivityModal({
         setResult(filteredOptions[0]);
       }
     }
-  }, [selectedRowData?.Type_of_Activity]);
+  }, [selectedRowData?.Type_of_Activity, picklistConfig]);
+
+  const displayedResultOptions =
+    result && !filteredActivities.includes(result)
+      ? [result, ...filteredActivities]
+      : filteredActivities;
 
 
 
@@ -668,7 +690,7 @@ export default function ClearActivityModal({
                     sx={{ marginLeft: 2, minWidth: 150, fontSize: "9pt" }} // Ensure font size for Select input
                     size="small"
                   >
-                    {filteredActivities?.map((option) => (
+                    {displayedResultOptions.map((option) => (
                       <MenuItem
                         key={option}
                         value={option}

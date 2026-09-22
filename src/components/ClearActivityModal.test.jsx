@@ -116,6 +116,40 @@ describe("ClearActivityModal", () => {
     ).toBe("Closed");
   });
 
+  it("uses the CRM-managed Result for the activity type", async () => {
+    const ZOHO = makeZoho();
+
+    render(
+      <ClearActivityModal
+        open
+        handleClose={vi.fn()}
+        selectedRowData={selectedEvent}
+        ZOHO={ZOHO}
+        filterDate="Default"
+        picklistConfig={{
+          results: { Meeting: ["Meeting Finalized"] },
+          _source: "custom_module",
+        }}
+      />
+    );
+
+    await waitFor(() => expect(ZOHO.CRM.API.searchRecord).toHaveBeenCalled());
+    fireEvent.click(screen.getByRole("checkbox", { name: "Clear" }));
+    fireEvent.click(screen.getByRole("button", { name: "Update" }));
+
+    await waitFor(() => {
+      expect(ZOHO.CRM.API.updateRecord).toHaveBeenCalledWith({
+        Entity: "Events",
+        RecordID: "event-1",
+        APIData: {
+          id: "event-1",
+          Event_Status: "Closed",
+          result: "Meeting Finalized",
+        },
+      });
+    });
+  });
+
   it("creates history and a participant link when requested", async () => {
     vi.spyOn(console, "log").mockImplementation(() => {});
     const ZOHO = makeZoho();
