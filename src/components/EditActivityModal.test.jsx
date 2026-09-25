@@ -40,6 +40,16 @@ const selectedRowData = {
   Description: "Original description",
 };
 
+const baseEditForm = {
+  ...selectedRowData,
+  start: selectedRowData.Start_DateTime,
+  end: selectedRowData.End_DateTime,
+  scheduledWith: selectedRowData.Participants,
+  scheduleFor: selectedRowData.Owner,
+  priority: selectedRowData.Event_Priority,
+  Reminder_Text: "None",
+};
+
 const renderModal = (ZOHO, overrides = {}) => {
   const props = {
     openEditModal: true,
@@ -92,6 +102,21 @@ describe("buildEditActivityPayload", () => {
     expect(payload).not.toHaveProperty("start");
     expect(payload).not.toHaveProperty("end");
     expect(payload).not.toHaveProperty("priority");
+  });
+
+  it("preserves zero duration and leaves a missing duration untouched", () => {
+    expect(
+      buildEditActivityPayload({
+        ...baseEditForm,
+        Duration_Min: 0,
+      }).Duration_Min
+    ).toBe("0");
+    expect(
+      buildEditActivityPayload({
+        ...baseEditForm,
+        Duration_Min: "",
+      })
+    ).not.toHaveProperty("Duration_Min");
   });
 });
 

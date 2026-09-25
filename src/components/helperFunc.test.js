@@ -121,6 +121,7 @@ describe("activity mappings", () => {
 
   it("prefers CRM-managed Result and Regarding options when configured", () => {
     const config = {
+      _source: "custom_module",
       results: {
         Appointment: ["Appointment Finished", "Appointment Cancelled"],
       },
@@ -137,6 +138,12 @@ describe("activity mappings", () => {
       "Appointment Cancelled",
     ]);
     expect(getRegardingOptions("Appointment", "Legacy value", config)).toEqual([
+      "Appointment Test",
+      "Dentist Appointment",
+    ]);
+    expect(
+      getRegardingOptions("Appointment", "Legacy value", config, true)
+    ).toEqual([
       "Legacy value",
       "Appointment Test",
       "Dentist Appointment",
@@ -144,15 +151,39 @@ describe("activity mappings", () => {
   });
 
   it("preserves a custom Regarding value without duplicating known values", () => {
-    expect(getRegardingOptions("Call", "Custom reason")[0]).toBe(
+    expect(getRegardingOptions("Call", "Custom reason", undefined, true)[0]).toBe(
       "Custom reason"
     );
     expect(
-      getRegardingOptions("Call", "Cold call").filter(
+      getRegardingOptions("Call", "Cold call", undefined, true).filter(
         (value) => value === "Cold call"
       )
     ).toHaveLength(1);
     expect(getRegardingOptions("Unknown", "")).toEqual(["General"]);
+  });
+
+  it("does not fall back when custom-module parent options are empty", () => {
+    const config = {
+      _source: "custom_module",
+      results: {
+        Appointment: [],
+        _default: ["Default Result"],
+      },
+      regarding: {
+        Appointment: [],
+        _default: ["Default Regarding"],
+      },
+    };
+
+    expect(getResultBasedOnActivityType("Appointment", config)).toBe("");
+    expect(getResultBasedOnActivityType2("Appointment", config)).toEqual([]);
+    expect(getRegardingOptions("Appointment", "", config)).toEqual([]);
+    expect(getResultBasedOnActivityType2("Meeting", config)).toEqual([
+      "Default Result",
+    ]);
+    expect(getRegardingOptions("Meeting", "", config)).toEqual([
+      "Default Regarding",
+    ]);
   });
 
   it("keeps CRM reminder minute values stable", () => {

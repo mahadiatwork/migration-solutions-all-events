@@ -150,6 +150,104 @@ describe("ClearActivityModal", () => {
     });
   });
 
+  it("does not invent a Result when the custom module has no matching parent", async () => {
+    const ZOHO = makeZoho();
+
+    render(
+      <ClearActivityModal
+        open
+        handleClose={vi.fn()}
+        selectedRowData={selectedEvent}
+        ZOHO={ZOHO}
+        filterDate="Default"
+        picklistConfig={{
+          results: {},
+          durations: [60],
+          _source: "custom_module",
+        }}
+      />
+    );
+
+    await waitFor(() => expect(ZOHO.CRM.API.searchRecord).toHaveBeenCalled());
+    fireEvent.click(screen.getByRole("checkbox", { name: "Clear" }));
+    fireEvent.click(screen.getByRole("button", { name: "Update" }));
+
+    await waitFor(() => {
+      expect(ZOHO.CRM.API.updateRecord).toHaveBeenCalledWith({
+        Entity: "Events",
+        RecordID: "event-1",
+        APIData: {
+          id: "event-1",
+          Event_Status: "Closed",
+          result: "",
+        },
+      });
+    });
+  });
+
+  it("renders Duration from module choices and preserves the saved clear value", () => {
+    render(
+      <ClearActivityModal
+        open
+        handleClose={vi.fn()}
+        selectedRowData={{ ...selectedEvent, Duration_Min: 15 }}
+        ZOHO={makeZoho()}
+        filterDate="Default"
+        picklistConfig={{
+          durations: [15, 45],
+          _source: "custom_module",
+        }}
+      />
+    );
+
+    expect(screen.getByRole("combobox", { name: "Duration" })).toHaveTextContent(
+      "15 minutes"
+    );
+  });
+
+  it("preserves an existing clear-history Result outside current module choices", async () => {
+    const ZOHO = makeZoho();
+    ZOHO.CRM.API.searchRecord.mockResolvedValue({
+      data: [
+        {
+          id: "history-1",
+          History_Details_Plain: "Existing details",
+          History_Result: "Legacy Result",
+        },
+      ],
+    });
+
+    render(
+      <ClearActivityModal
+        open
+        handleClose={vi.fn()}
+        selectedRowData={selectedEvent}
+        ZOHO={ZOHO}
+        filterDate="Default"
+        picklistConfig={{
+          results: { Meeting: ["Meeting Finalized"] },
+          durations: [60],
+          _source: "custom_module",
+        }}
+      />
+    );
+
+    await waitFor(() =>
+      expect(screen.getByText("Legacy Result")).toBeInTheDocument()
+    );
+    fireEvent.click(screen.getByRole("checkbox", { name: "Clear" }));
+    fireEvent.click(screen.getByRole("button", { name: "Update" }));
+
+    await waitFor(() => {
+      expect(ZOHO.CRM.API.updateRecord).toHaveBeenCalledWith(
+        expect.objectContaining({
+          Entity: "History1",
+          APIData: expect.objectContaining({ History_Result: "Legacy Result" }),
+        })
+      );
+    });
+  });
+
   it("creates history and a participant link when requested", async () => {
     vi.spyOn(console, "log").mockImplementation(() => {});
     const ZOHO = makeZoho();

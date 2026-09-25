@@ -102,26 +102,6 @@ const headCells = [
 
 const noSort = ["duration", "time"];
 
-const fallbackTypeFilterOptions = [
-  "Meeting",
-  "To-Do",
-  "Call",
-  "Appointment",
-  "Boardroom",
-  "Call Billing",
-  "Email Billing",
-  "Initial Consultation",
-  "Mail",
-  "Meeting Billing",
-  "Personal Activity",
-  "Room 1",
-  "Room 2",
-  "Room 3",
-  "Todo Billing",
-  "Vacation",
-  "Other",
-];
-
 const convertDate = (date)=>{
   const [day, month, year] = date.split("/");
   return `${year}-${month}-${day}`;
@@ -228,7 +208,9 @@ function createData(event, type) {
     ? parsedStart.format("HH:mm")
     : "--:--";
 
-  const duration = event.Duration_Min
+  const hasDuration =
+    event.Duration_Min !== "" && event.Duration_Min != null;
+  const duration = hasDuration
     ? `${event.Duration_Min} minutes`
     : parsedStart?.isValid() && parsedEnd?.isValid()
     ? `${parsedEnd.diff(parsedStart, "minute")} minutes`
@@ -489,15 +471,16 @@ export default function ScheduleTable({
   ];
 
   const typeOptions = React.useMemo(() => {
-    const configuredTypes =
-      picklistConfig?._source === "custom_module"
-        ? getTypeOptionsFromConfig(picklistConfig)
-        : fallbackTypeFilterOptions;
+    const configuredOptions = getTypeOptionsFromConfig(picklistConfig);
+    if (picklistConfig?._source === "custom_module") {
+      return configuredOptions;
+    }
+
     const typesAlreadyInUse = events
       .map((event) => event?.Type_of_Activity)
       .filter(Boolean);
 
-    return [...new Set([...configuredTypes, ...typesAlreadyInUse])];
+    return [...new Set([...configuredOptions, ...typesAlreadyInUse])];
   }, [events, picklistConfig]);
 
   const priorityOptions = ["Low", "Medium", "High"];
@@ -711,7 +694,7 @@ export default function ScheduleTable({
   const rows = React.useMemo(() => {
     return Array.isArray(events)
       ? events.map((event) =>
-          createData(event, event.Type_of_Activity || "Other")
+          createData(event, event.Type_of_Activity || "")
         )
       : [];
   }, [events]);

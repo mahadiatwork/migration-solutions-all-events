@@ -148,6 +148,31 @@ describe("ActivityTable", () => {
     expect(participant).toHaveAttribute("rel", "noopener noreferrer");
   });
 
+  it("displays a configured zero-minute duration without deriving another value", () => {
+    useEventsStore.setState({
+      events: [makeEvent({ Duration_Min: 0 })],
+    });
+
+    renderTable();
+
+    expect(screen.getByText("0 minutes")).toBeInTheDocument();
+  });
+
+  it("does not relabel a blank stored Type as Other", () => {
+    useEventsStore.setState({
+      events: [makeEvent({ Type_of_Activity: "" })],
+    });
+
+    renderTable({
+      picklistConfig: {
+        types: ["Meeting"],
+        _source: "custom_module",
+      },
+    });
+
+    expect(screen.queryByText("Other")).not.toBeInTheDocument();
+  });
+
   it("hides closed events until Show Cleared is enabled", async () => {
     useEventsStore.setState({
       events: [
@@ -344,7 +369,7 @@ describe("ActivityTable", () => {
     expect(screen.getByRole("button", { name: "Apply filter Existing preset" })).toBeInTheDocument();
   });
 
-  it("uses configured Type filters while retaining types on existing events", async () => {
+  it("uses only configured Type filters when the module is authoritative", async () => {
     useEventsStore.setState({ events: [makeEvent()] });
     const { user } = renderTable({
       picklistConfig: {
@@ -358,7 +383,7 @@ describe("ActivityTable", () => {
     expect(
       screen.getByRole("option", { name: "Appointment Test" })
     ).toBeVisible();
-    expect(screen.getByRole("option", { name: "Meeting" })).toBeVisible();
+    expect(screen.queryByRole("option", { name: "Meeting" })).not.toBeInTheDocument();
     expect(screen.queryByRole("option", { name: "Call" })).not.toBeInTheDocument();
   });
 

@@ -21,6 +21,10 @@ import dayjs from "dayjs";
 import utc from "dayjs/plugin/utc";
 import timezone from "dayjs/plugin/timezone";
 import useEventsStore from "../store/eventsStore";
+import {
+  getDurationOptionsFromConfig,
+  getTypeOptionsFromConfig,
+} from "../services/picklistConfigService";
 dayjs.extend(utc);
 dayjs.extend(timezone);
 
@@ -152,6 +156,7 @@ export function buildCreateActivityPayload(data, individualParticipant = null) {
       ? dayjs(data?.startTime).add(2, "year").format("YYYY-MM-DD")
       : dayjs(data?.endTime).format("YYYY-MM-DD");
 
+  const hasDuration = data.Duration_Min !== "" && data.Duration_Min != null;
   let transformedData = {
     ...data,
     Start_DateTime: formatDateWithOffset(data.start),
@@ -167,11 +172,12 @@ export function buildCreateActivityPayload(data, individualParticipant = null) {
     What_Id: data.What_Id,
     se_module: "Accounts",
     Participants: participants,
-    Duration_Min: data.Duration_Min ? data.Duration_Min.toString() : "0",
+    ...(hasDuration ? { Duration_Min: String(data.Duration_Min) } : {}),
     Owner: {
       id: data?.scheduleFor?.id,
     },
   };
+  if (!hasDuration) delete transformedData.Duration_Min;
 
   const occurrence = data?.occurrence?.toLowerCase();
   const recurringFrequencies = ["daily", "weekly", "monthly", "yearly"];
@@ -320,19 +326,19 @@ const CreateActivityModal = ({
   const theme = useTheme();
   const [value, setValue] = useState(0);
 
+  const initialType = getTypeOptionsFromConfig(picklistConfig)[0] || "";
+  const initialDuration = getDurationOptionsFromConfig(picklistConfig)[0] ?? "";
   const currentTimeInAdelaide = dayjs().format("YYYY-MM-DDTHH:mm:ssZ");
-
-  const oneHourFromNowInAdelaide = dayjs()
-    .add(1, "hour")
+  const initialEndTimeInAdelaide = dayjs()
+    .add(Number.isFinite(initialDuration) ? initialDuration : 0, "minute")
     .format("YYYY-MM-DDTHH:mm:ssZ");
 
   const [formData, setFormData] = useState({
-    Type_of_Activity: "Meeting",
+    Type_of_Activity: initialType,
     startTime: "",
     endTime: 60,
-    duration: "",
     What_Id: "",
-    Event_Title: "New Meeting",
+    Event_Title: initialType ? `New ${initialType}` : "New Activity",
     resource: 1,
     scheduleFor: loggedInUser || "",
     scheduledWith: [],
@@ -340,12 +346,12 @@ const CreateActivityModal = ({
     priority: "Medium",
     repeat: "once",
     start: currentTimeInAdelaide || "",
-    end: oneHourFromNowInAdelaide || "",
+    end: initialEndTimeInAdelaide || "",
     noEndDate: false,
     Description: "",
     color: "#fff",
     Regarding: "",
-    Duration_Min: 60,
+    Duration_Min: initialDuration,
     Create_Separate_Event_For_Each_Contact: false,
     Reminder_Text: "15 minutes before",
     Remind_Participants: [],
@@ -360,17 +366,26 @@ const CreateActivityModal = ({
       Type_of_Activity,
       start, // Use raw formData fields
       end,
-      duration,
+      Duration_Min,
       Event_Title,
       scheduledWith, // scheduledWith instead of Participants
     } = formData;
 
-    // Ensure all required fields are not empty or null
+    const configuredDurations = getDurationOptionsFromConfig(picklistConfig);
+    const durationIsConfigured =
+      Duration_Min !== "" &&
+      Duration_Min != null &&
+      configuredDurations.some(
+        (option) => Number(option) === Number(Duration_Min)
+      );
+
+    // Ensure all required fields are not empty or null. A successful custom
+    // module read with no Duration rows intentionally makes creation invalid.
     return (
       Type_of_Activity &&
       start &&
       end &&
-      duration &&
+      durationIsConfigured &&
       Event_Title &&
       scheduledWith.length > 0
     );

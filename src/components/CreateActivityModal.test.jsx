@@ -113,6 +113,16 @@ describe("buildCreateActivityPayload", () => {
     expect(payload).not.toHaveProperty("occurrence");
   });
 
+  it("preserves a configured zero duration without inventing one when missing", () => {
+    expect(
+      buildCreateActivityPayload({ ...baseForm, Duration_Min: 0 })
+        .Duration_Min
+    ).toBe("0");
+    expect(
+      buildCreateActivityPayload({ ...baseForm, Duration_Min: "" })
+    ).not.toHaveProperty("Duration_Min");
+  });
+
   it("builds a weekly recurrence rule", () => {
     const payload = buildCreateActivityPayload({
       ...baseForm,

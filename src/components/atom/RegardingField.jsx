@@ -9,33 +9,60 @@ import {
 } from "@mui/material";
 import { getRegardingOptions } from "../helperFunc"; // Import the function
 
-const RegardingField = ({ formData, handleInputChange, picklistConfig }) => {
+const RegardingField = ({
+  formData,
+  handleInputChange,
+  picklistConfig,
+  preserveExistingValue = false,
+}) => {
   const existingValue = formData.Regarding;
   const predefinedOptions = getRegardingOptions(
     formData.Type_of_Activity,
     existingValue,
-    picklistConfig
+    picklistConfig,
+    preserveExistingValue
   ); // Get dynamic options based on type
+  const configuredOptions = getRegardingOptions(
+    formData.Type_of_Activity,
+    "",
+    picklistConfig
+  );
+  const allowManualOther =
+    picklistConfig?._source !== "custom_module" ||
+    configuredOptions.includes("Other");
 
   const [selectedValue, setSelectedValue] = useState(existingValue);
   const [manualInput, setManualInput] = useState("");
 
   useEffect(() => {
     // If existingValue is not in the predefined options, set it to "Other" and show manual input
-    if (existingValue && !predefinedOptions.includes(existingValue)) {
+    if (
+      allowManualOther &&
+      existingValue &&
+      !predefinedOptions.includes(existingValue)
+    ) {
       setSelectedValue("Other");
       setManualInput(existingValue);
-    } else {
+    } else if (predefinedOptions.includes(existingValue)) {
       setSelectedValue(existingValue);
       setManualInput("");
+    } else {
+      setSelectedValue("");
+      setManualInput("");
     }
-  }, [formData.Type_of_Activity, existingValue, picklistConfig]);
+  }, [
+    allowManualOther,
+    existingValue,
+    formData.Type_of_Activity,
+    picklistConfig,
+    preserveExistingValue,
+  ]);
 
   const handleSelectChange = (event) => {
     const value = event.target.value;
     setSelectedValue(value);
 
-    if (value !== "Other") {
+    if (value !== "Other" || !allowManualOther) {
       setManualInput(""); // Clear manual input when a predefined option is selected
       handleInputChange("Regarding", value);
     } else {
@@ -72,13 +99,15 @@ const RegardingField = ({ formData, handleInputChange, picklistConfig }) => {
               {option}
             </MenuItem>
           ))}
-          <MenuItem value="Other" sx={{ fontSize: "9pt" }}>
-            Other (Manually enter)
-          </MenuItem>
+          {allowManualOther && !predefinedOptions.includes("Other") && (
+            <MenuItem value="Other" sx={{ fontSize: "9pt" }}>
+              Other (Manually enter)
+            </MenuItem>
+          )}
         </Select>
       </FormControl>
 
-      {selectedValue === "Other" && (
+      {allowManualOther && selectedValue === "Other" && (
         <TextField
           label="Enter your custom regarding"
           fullWidth

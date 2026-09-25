@@ -186,11 +186,26 @@ export const typeOptions = [
 ];
 
 
+const getScopedPicklistOptions = (optionsByParent, parent) => {
+  if (!optionsByParent || typeof optionsByParent !== "object") return undefined;
+  if (Object.prototype.hasOwnProperty.call(optionsByParent, parent)) {
+    return Array.isArray(optionsByParent[parent]) ? optionsByParent[parent] : [];
+  }
+  if (Object.prototype.hasOwnProperty.call(optionsByParent, "_default")) {
+    return Array.isArray(optionsByParent._default)
+      ? optionsByParent._default
+      : [];
+  }
+  return undefined;
+};
+
 export const getResultBasedOnActivityType = (activityType, picklistConfig) => {
-  const configuredResults =
-    picklistConfig?.results?.[activityType] ||
-    picklistConfig?.results?._default;
+  const configuredResults = getScopedPicklistOptions(
+    picklistConfig?.results,
+    activityType
+  );
   if (configuredResults?.length) return configuredResults[0];
+  if (picklistConfig?._source === "custom_module") return "";
 
   switch (activityType) {
     case "Meeting":
@@ -254,25 +269,37 @@ export const activityResultMapping = {
 };
 
 export const getResultBasedOnActivityType2 = (activityType, picklistConfig) => {
-  const configuredResults =
-    picklistConfig?.results?.[activityType] ||
-    picklistConfig?.results?._default;
-  if (configuredResults?.length) return configuredResults;
+  const configuredResults = getScopedPicklistOptions(
+    picklistConfig?.results,
+    activityType
+  );
+  if (configuredResults !== undefined) return configuredResults;
+  if (picklistConfig?._source === "custom_module") return [];
 
   return activityResultMapping[activityType] || ["Note"]; // Default to "Note" if no match
 };
 
 
-export const getRegardingOptions = (type, existingValue, picklistConfig) => {
-  const configuredOptions =
-    picklistConfig?.regarding?.[type] ||
-    picklistConfig?.regarding?._default;
+export const getRegardingOptions = (
+  type,
+  existingValue,
+  picklistConfig,
+  preserveExistingValue = false
+) => {
+  const configuredOptions = getScopedPicklistOptions(
+    picklistConfig?.regarding,
+    type
+  );
 
-  if (configuredOptions?.length) {
-    const options = [...configuredOptions];
+  if (
+    configuredOptions !== undefined ||
+    picklistConfig?._source === "custom_module"
+  ) {
+    const options = [...(configuredOptions || [])];
     const safeExistingValue =
       typeof existingValue === "string" ? existingValue : "";
     if (
+      preserveExistingValue &&
       safeExistingValue.trim() !== "" &&
       !options.includes(safeExistingValue)
     ) {
@@ -310,7 +337,12 @@ export const getRegardingOptions = (type, existingValue, picklistConfig) => {
   let predefinedOptions = options[type] || ["General"];
 
   // Only add existingValue if it's not empty and not already in the options
-  if (existingValue && existingValue.trim() !== "" && !predefinedOptions.includes(existingValue)) {
+  if (
+    preserveExistingValue &&
+    existingValue &&
+    existingValue.trim() !== "" &&
+    !predefinedOptions.includes(existingValue)
+  ) {
     predefinedOptions = [existingValue, ...predefinedOptions];
   }
 

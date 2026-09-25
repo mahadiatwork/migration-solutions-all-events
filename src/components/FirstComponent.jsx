@@ -193,32 +193,31 @@ const FirstComponent = ({
     if (isEditMode || picklistConfig?._source !== "custom_module") return;
 
     const configuredTypes = getTypeOptionsFromConfig(picklistConfig);
-    if (
-      configuredTypes.length > 0 &&
-      !configuredTypes.includes(formData.Type_of_Activity)
-    ) {
-      const nextType = configuredTypes[0];
+    const nextType = configuredTypes.includes(formData.Type_of_Activity)
+      ? formData.Type_of_Activity
+      : configuredTypes[0] || "";
+    if (nextType !== formData.Type_of_Activity) {
       handleInputChange("Type_of_Activity", nextType);
 
       const resource = activityTypeResources.get(nextType);
       if (resource != null) handleInputChange("resource", resource);
+    }
 
-      const regardingOptions = getRegardingOptions(
-        nextType,
-        "",
-        picklistConfig
-      );
+    const regardingOptions = getRegardingOptions(nextType, "", picklistConfig);
+    if (!regardingOptions.includes(formData.Regarding)) {
       handleInputChange("Regarding", regardingOptions[0] || "");
     }
 
     const configuredDurations = getDurationOptionsFromConfig(picklistConfig);
     const currentDuration = Number.parseInt(formData.Duration_Min, 10);
-    if (
-      configuredDurations.length > 0 &&
-      !configuredDurations.includes(currentDuration)
-    ) {
-      handleInputChange("Duration_Min", configuredDurations[0]);
-      addMinutesToDateTime("Duration_Min", configuredDurations[0]);
+    const nextDuration = configuredDurations.includes(currentDuration)
+      ? currentDuration
+      : configuredDurations[0] ?? "";
+    if (nextDuration !== currentDuration) {
+      handleInputChange("Duration_Min", nextDuration);
+      if (Number.isFinite(nextDuration)) {
+        addMinutesToDateTime("Duration_Min", nextDuration);
+      }
     }
     // Apply newly loaded CRM defaults once. Subsequent form changes are user-driven.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -226,13 +225,8 @@ const FirstComponent = ({
 
   useEffect(() => {
     const initializeDefaultValues = () => {
-      const now = new Date();
-      const oneHourLater = new Date(now);
-      oneHourLater.setHours(now.getHours() + 1);
-
       // handleInputChange("start", now.toISOString());
       // handleInputChange("end", oneHourLater.toISOString());
-      handleInputChange("duration", 60); // Default duration of 60 minutes
       // setStartValue(dayjs(now));
       // setEndValue(dayjs(oneHourLater));
     };
@@ -477,9 +471,25 @@ const FirstComponent = ({
   }
 
   const handleEndDateChange = (e) => {
+    const requestedDuration = getTimeDifference(e.$d);
+    if (picklistConfig?._source === "custom_module") {
+      if (durations.length === 0) return;
+
+      const nextDuration = durations.reduce((closest, candidate) =>
+        Math.abs(candidate - requestedDuration) <
+        Math.abs(closest - requestedDuration)
+          ? candidate
+          : closest
+      );
+      const normalizedEnd = calculateEndDate(formData.start, nextDuration);
+      handleInputChange("end", normalizedEnd);
+      handleInputChange("Duration_Min", nextDuration);
+      setEndValue(dayjs(normalizedEnd));
+      return;
+    }
+
     handleInputChange("end", e.$d);
-    const getDiffInMinutes = getTimeDifference(e.$d);
-    handleInputChange("Duration_Min", getDiffInMinutes);
+    handleInputChange("Duration_Min", requestedDuration);
   };
 
   const handleCheckboxChange = (field) => {
@@ -585,14 +595,16 @@ const FirstComponent = ({
                     ? selectedDuration
                     : configuredDurations.includes(selectedDuration)
                       ? selectedDuration
-                      : configuredDurations[0] ?? 60;
+                      : configuredDurations[0] ?? "";
+                handleInputChange("start", e.$d);
+                handleInputChange("Duration_Min", nextDuration);
+                if (!Number.isFinite(nextDuration)) return;
+
                 const addedHour = new Date(
                   dayjs(e.$d).add(nextDuration, "minute").toDate()
                 );
-                handleInputChange("start", e.$d);
                 handleInputChange("end", addedHour);
                 setEndValue(dayjs(addedHour));
-                handleInputChange("Duration_Min", nextDuration);
                 console.log(e.$d);
                 console.log(addedHour);
               }}
@@ -768,6 +780,7 @@ const FirstComponent = ({
             handleInputChange={handleInputChange}
             selectedRowData={selectedRowData}
             picklistConfig={picklistConfig}
+            preserveExistingValue={Boolean(isEditMode)}
           />
         </Grid>
         <Grid size={12}>

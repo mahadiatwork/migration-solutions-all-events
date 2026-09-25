@@ -27,6 +27,7 @@ import {
   getResultBasedOnActivityType2,
 } from "./helperFunc";
 import useEventsStore from "../store/eventsStore";
+import { getDurationOptionsFromConfig } from "../services/picklistConfigService";
 
 export default function ClearActivityModal({
   open,
@@ -75,20 +76,13 @@ export default function ClearActivityModal({
       }
     }
   };
-  const calculateDuration = (durationInMinutes) => {
-    if (!durationInMinutes) return "5 minutes";
-    const minutes = parseInt(durationInMinutes, 10);
-    if (minutes < 60) {
-      return `${minutes} minutes`;
-    } else {
-      const hours = Math.floor(minutes / 60);
-      return `${hours} hour${hours > 1 ? "s" : ""}`;
-    }
-  };
-
-  const [duration, setDuration] = React.useState(
-    calculateDuration(selectedRowData?.duration)
-  );
+  const configuredDurations = getDurationOptionsFromConfig(picklistConfig);
+  const existingDuration = Number.parseInt(selectedRowData?.Duration_Min, 10);
+  const displayedDurationOptions =
+    Number.isFinite(existingDuration) &&
+    !configuredDurations.includes(existingDuration)
+      ? [existingDuration, ...configuredDurations]
+      : configuredDurations;
 
   const [result, setResult] = React.useState(selectedRowData?.result || "");
   const [addActivityToHistory, setAddActivityToHistory] = React.useState(false);
@@ -105,10 +99,12 @@ export default function ClearActivityModal({
     setEraseChecked(event.target.checked);
     setClearChecked(false);
     setResult(
-      getResultBasedOnActivityType(
-        selectedRowData.Type_of_Activity,
-        picklistConfig
-      )
+      (currentResult) =>
+        currentResult ||
+        getResultBasedOnActivityType(
+          selectedRowData.Type_of_Activity,
+          picklistConfig
+        )
     );
   };
 
@@ -426,10 +422,12 @@ export default function ClearActivityModal({
     setClearChecked(event.target.checked); // Update the checkbox state
     setEraseChecked(false); // Uncheck the "Erase" checkbox when "Clear" is changed
     setResult(
-      getResultBasedOnActivityType(
-        selectedRowData.Type_of_Activity,
-        picklistConfig
-      )
+      (currentResult) =>
+        currentResult ||
+        getResultBasedOnActivityType(
+          selectedRowData.Type_of_Activity,
+          picklistConfig
+        )
     );
 
     if (!event.target.checked) {
@@ -633,16 +631,17 @@ export default function ClearActivityModal({
                   </InputLabel>
                   <Select
                     labelId="duration-label"
-                    value={duration}
+                    label="Duration"
+                    value={Number.isFinite(existingDuration) ? existingDuration : ""}
                     size="small"
-                    onChange={(e) => setDuration(e.target.value)}
                     sx={{ minWidth: 150 }}
                     disabled
                   >
-                    <MenuItem value="5 minutes">5 minutes</MenuItem>
-                    <MenuItem value="30 minutes">30 minutes</MenuItem>
-                    <MenuItem value="1 hour">1 hour</MenuItem>
-                    <MenuItem value="2 hours">2 hours</MenuItem>
+                    {displayedDurationOptions.map((minutes) => (
+                      <MenuItem key={minutes} value={minutes}>
+                        {minutes} minutes
+                      </MenuItem>
+                    ))}
                   </Select>
                 </FormGroup>
 
