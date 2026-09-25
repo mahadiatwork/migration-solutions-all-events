@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   activityResultMapping,
+  getActivityTimezone,
   getRegardingOptions,
   getResultBasedOnActivityType,
   getResultBasedOnActivityType2,
@@ -40,6 +41,24 @@ describe("date range helpers", () => {
     ["Default", "22/08/2027", false],
   ])("applies the inclusive %s boundary to %s", (range, date, expected) => {
     expect(isDateInRange(date, range)).toBe(expected);
+  });
+
+  it("uses the user's local calendar day for Today", () => {
+    // 23:30 UTC is already the following morning in an Australian timezone.
+    vi.setSystemTime(new Date("2026-09-02T23:30:00Z"));
+
+    expect(isDateInRange("03/09/2026", "Today")).toBe(true);
+    expect(isDateInRange("02/09/2026", "Today")).toBe(false);
+  });
+
+  it("reads the timezone configured on the current device", () => {
+    const dateTimeFormat = vi.spyOn(Intl, "DateTimeFormat").mockReturnValue({
+      resolvedOptions: () => ({ timeZone: "Australia/Brisbane" }),
+    });
+
+    expect(getActivityTimezone()).toBe("Australia/Brisbane");
+
+    dateTimeFormat.mockRestore();
   });
 
   it("accepts supported padded, unpadded, and ISO dates", () => {

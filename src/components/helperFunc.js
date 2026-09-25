@@ -1,9 +1,39 @@
 import dayjs from "dayjs";
 import utc from "dayjs/plugin/utc";
+import timezone from "dayjs/plugin/timezone";
 import customParseFormat from "dayjs/plugin/customParseFormat";
 
 dayjs.extend(utc);
+dayjs.extend(timezone);
 dayjs.extend(customParseFormat);
+
+const FALLBACK_ACTIVITY_TIMEZONE = "Australia/Sydney";
+
+export const getActivityTimezone = () =>
+  Intl.DateTimeFormat().resolvedOptions().timeZone ||
+  FALLBACK_ACTIVITY_TIMEZONE;
+
+// Use the timezone configured on the current user's device so each Australian
+// region gets its own calendar boundaries and daylight-saving rules.
+export const ACTIVITY_TIMEZONE = getActivityTimezone();
+
+const hasExplicitTimezone = (value) =>
+  typeof value === "string" && /(?:Z|[+-]\d{2}:?\d{2})$/i.test(value);
+
+// CRM values without an offset are already expressed in the activity timezone.
+// Values with an offset represent an instant and must be converted for display.
+export const parseActivityDateTime = (value) => {
+  if (!value) return null;
+
+  const source = dayjs(value);
+  if (!source.isValid()) return null;
+
+  const parsed = hasExplicitTimezone(value)
+    ? source.tz(ACTIVITY_TIMEZONE)
+    : dayjs.tz(value, ACTIVITY_TIMEZONE);
+
+  return parsed.isValid() ? parsed : null;
+};
 
 // --- Helper: Parse date from known formats ---
 export const safeParseDateString = (dateString) => {
@@ -17,29 +47,29 @@ export const safeParseDateString = (dateString) => {
 
   if (dmyPattern.test(dateString)) {
     const [, day, month, year] = dateString.match(dmyPattern);
-    const parsed = dayjs.utc(
+    const parsed = dayjs(
       `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`,
       "YYYY-MM-DD",
       true
-    );
+    ).tz(ACTIVITY_TIMEZONE, true);
     if (parsed.isValid()) return parsed.startOf("day");
     return null;
   }
 
   if (isoPattern.test(dateString)) {
     const [, year, month, day] = dateString.match(isoPattern);
-    const parsed = dayjs.utc(
+    const parsed = dayjs(
       `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`,
       "YYYY-MM-DD",
       true
-    );
+    ).tz(ACTIVITY_TIMEZONE, true);
     if (parsed.isValid()) return parsed.startOf("day");
     return null;
   }
 
   // Fallback to default Day.js parsing
-  const fallback = dayjs.utc(dateString);
-  if (fallback.isValid()) return fallback.startOf("day");
+  const fallback = parseActivityDateTime(dateString);
+  if (fallback) return fallback.startOf("day");
 
   console.warn(`❌ Failed to parse date: "${dateString}"`);
   return null;
@@ -54,7 +84,7 @@ export const isDateInRange = (date, rangeType) => {
   }
 
   const targetDate = parsedDate.valueOf();
-  const today = dayjs.utc().startOf("day");
+  const today = dayjs().tz(ACTIVITY_TIMEZONE).startOf("day");
 
   let startDate, endDate;
 
@@ -90,7 +120,11 @@ export const isDateInRange = (date, rangeType) => {
       break;
     case "Next Week":
       startDate = today.add(7 - today.day(), "day").startOf("day").valueOf();
-      endDate = dayjs.utc(startDate).add(6, "day").endOf("day").valueOf();
+      endDate = dayjs(startDate)
+        .tz(ACTIVITY_TIMEZONE)
+        .add(6, "day")
+        .endOf("day")
+        .valueOf();
       break;
     case "Default":
     default:

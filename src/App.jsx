@@ -1,10 +1,15 @@
 import React, { useEffect, useState, createContext } from "react";
+import dayjs from "dayjs";
+import timezone from "dayjs/plugin/timezone";
 import "./App.css";
 import ActivityTable from "./components/ActivityTable";
 import { CircularProgress, Box } from "@mui/material";
 import DateRangeModal from "./components/atom/DateRangeModal";
+import { ACTIVITY_TIMEZONE } from "./components/helperFunc";
 import useEventsStore from "./store/eventsStore";
 import { fetchPicklistConfig } from "./services/picklistConfigService";
+
+dayjs.extend(timezone);
 
 const ZOHO = window.ZOHO;
 
@@ -126,103 +131,84 @@ function App() {
   };
 
   // --- 3. Date Utility Helper ---
-  // Returns standard JS Date objects
+  // Returns standard JS Date objects whose day boundaries are in the user's local time.
   const calculateDateRange = (filterType, customRange) => {
-    const currentDate = new Date();
-    // Normalize current date to end of day for inclusive comparisons
-    currentDate.setHours(23, 59, 59, 999);
+    const currentDate = dayjs().tz(ACTIVITY_TIMEZONE);
 
     let beginDate, closeDate;
 
     switch (filterType) {
       case "Default":
         // Last month start to 1 year future
-        beginDate = new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1);
-        closeDate = new Date(currentDate);
-        closeDate.setFullYear(currentDate.getFullYear() + 1);
+        beginDate = currentDate.subtract(1, "month").startOf("month");
+        closeDate = currentDate.add(1, "year").endOf("day");
         break;
       case "All":
-        beginDate = new Date("2023-01-01");
-        closeDate = new Date();
+        beginDate = dayjs.tz("2023-01-01T00:00:00", ACTIVITY_TIMEZONE);
+        closeDate = currentDate;
         break;
       case "Today":
-        beginDate = new Date(currentDate);
-        beginDate.setHours(0, 0, 0, 0);
-        closeDate = new Date(currentDate);
-        closeDate.setHours(23, 59, 59, 999);
+        beginDate = currentDate.startOf("day");
+        closeDate = currentDate.endOf("day");
         break;
       case "Current Week":
-        beginDate = new Date(currentDate);
-        beginDate.setDate(currentDate.getDate() - currentDate.getDay());
-        beginDate.setHours(0,0,0,0);
-        
-        closeDate = new Date(beginDate);
-        closeDate.setDate(beginDate.getDate() + 6);
-        closeDate.setHours(23,59,59,999);
+        beginDate = currentDate.startOf("week");
+        closeDate = beginDate.add(6, "day").endOf("day");
         break;
       case "Last 7 Days":
-        closeDate = new Date();
-        beginDate = new Date();
-        beginDate.setDate(closeDate.getDate() - 6); // inclusive of today
-        beginDate.setHours(0,0,0,0);
+        beginDate = currentDate.subtract(6, "day").startOf("day");
+        closeDate = currentDate.endOf("day");
         break;
       case "Last 30 Days":
-        closeDate = new Date();
-        beginDate = new Date();
-        beginDate.setDate(closeDate.getDate() - 29);
-        beginDate.setHours(0,0,0,0);
+        beginDate = currentDate.subtract(29, "day").startOf("day");
+        closeDate = currentDate.endOf("day");
         break;
       case "Last 90 Days":
-        closeDate = new Date();
-        beginDate = new Date();
-        beginDate.setDate(closeDate.getDate() - 89);
-        beginDate.setHours(0,0,0,0);
+        beginDate = currentDate.subtract(89, "day").startOf("day");
+        closeDate = currentDate.endOf("day");
         break;
       case "Last Month":
-        beginDate = new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1);
-        closeDate = new Date(currentDate.getFullYear(), currentDate.getMonth(), 0);
-        closeDate.setHours(23,59,59,999);
+        beginDate = currentDate.subtract(1, "month").startOf("month");
+        closeDate = currentDate.subtract(1, "month").endOf("month");
         break;
       case "Current Month":
-        beginDate = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
-        closeDate = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0);
-        closeDate.setHours(23,59,59,999);
+        beginDate = currentDate.startOf("month");
+        closeDate = currentDate.endOf("month");
         break;
       case "Next Week":
-        beginDate = new Date();
-        beginDate.setDate(beginDate.getDate() - beginDate.getDay() + 7);
-        beginDate.setHours(0,0,0,0);
-        closeDate = new Date(beginDate);
-        closeDate.setDate(beginDate.getDate() + 6);
-        closeDate.setHours(23,59,59,999);
+        beginDate = currentDate.startOf("week").add(7, "day");
+        closeDate = beginDate.add(6, "day").endOf("day");
         break;
       case "Custom Range":
         if (customRange) {
-          beginDate = new Date(customRange.startDate + "T00:00:00");
-          closeDate = new Date(customRange.endDate + "T23:59:59");
+          beginDate = dayjs.tz(
+            `${customRange.startDate}T00:00:00`,
+            ACTIVITY_TIMEZONE
+          );
+          closeDate = dayjs.tz(
+            `${customRange.endDate}T23:59:59`,
+            ACTIVITY_TIMEZONE
+          );
         }
         break;
       default:
         return null;
     }
-    return { beginDate, closeDate };
+    return {
+      beginDate: beginDate?.toDate(),
+      closeDate: closeDate?.toDate(),
+    };
   };
 
   const formatDateForZoho = (date, hours = 0, minutes = 0, seconds = 0) => {
     if (!date || isNaN(date.getTime())) return null;
     const pad = (num) => String(num).padStart(2, "0");
-    
-    const year = date.getFullYear();
-    const month = pad(date.getMonth() + 1);
-    const day = pad(date.getDate());
+
+    const zonedDate = dayjs(date).tz(ACTIVITY_TIMEZONE);
+    const datePart = zonedDate.format("YYYY-MM-DD");
     const formattedTime = `${pad(hours)}:${pad(minutes)}:${pad(seconds)}`;
-    
-    const timezoneOffset = -date.getTimezoneOffset();
-    const offsetSign = timezoneOffset >= 0 ? "+" : "-";
-    const offsetHours = pad(Math.floor(Math.abs(timezoneOffset) / 60));
-    const offsetMinutes = pad(Math.abs(timezoneOffset) % 60);
-    
-    return `${year}-${month}-${day}T${formattedTime}${offsetSign}${offsetHours}:${offsetMinutes}`;
+
+    return `${datePart}T${formattedTime}${zonedDate.format("Z")}`;
   };
 
   // --- 4. Robust Event Update Logic with Re-Validation ---

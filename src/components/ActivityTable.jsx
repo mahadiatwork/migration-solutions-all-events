@@ -28,10 +28,11 @@ import { visuallyHidden } from "@mui/utils";
 import ClearActivityModal from "./ClearActivityModal";
 import EditActivityModal from "./EditActivityModal";
 import CreateActivityModal from "./CreateActivityModal";
-import { isDateInRange } from "./helperFunc";
+import {
+  isDateInRange,
+  parseActivityDateTime,
+} from "./helperFunc";
 import dayjs from "dayjs";
-import utc from "dayjs/plugin/utc";
-import timezone from "dayjs/plugin/timezone";
 import customParseFormat from "dayjs/plugin/customParseFormat";
 import isBetween from "dayjs/plugin/isBetween";
 import { DatePicker } from "@mui/x-date-pickers/DatePicker";
@@ -48,8 +49,6 @@ import {
 } from "../services/activityFilterPreferences";
 
 // Extend dayjs with plugins
-dayjs.extend(utc);
-dayjs.extend(timezone);
 dayjs.extend(customParseFormat);
 dayjs.extend(isBetween);
 
@@ -215,8 +214,11 @@ function createData(event, type) {
 
   // Defensive: ensure these are strings
   const parsedStart =
-    rawStart && typeof rawStart === "string" ? dayjs(rawStart) : null;
-  const parsedEnd = rawEnd && typeof rawEnd === "string" ? dayjs(rawEnd) : null;
+    rawStart && typeof rawStart === "string"
+      ? parseActivityDateTime(rawStart)
+      : null;
+  const parsedEnd =
+    rawEnd && typeof rawEnd === "string" ? parseActivityDateTime(rawEnd) : null;
 
   const formattedDate = parsedStart?.isValid()
     ? parsedStart.format("DD/MM/YYYY")
@@ -802,10 +804,6 @@ export default function ScheduleTable({
         }
       } else if (filterDate && filterDate !== "Default") {
         // Use your existing isDateInRange but with Day.js parsing
-        const date = dayjs(row.date, "DD/MM/YYYY").utc();
-        const today = dayjs().utc().startOf("day");
-
-        // Add your existing date range logic here with Day.js
         dateMatch = isDateInRange(row.date, filterDate);
       } else {
         // Always use isDateInRange as a fallback (includes "Default")
