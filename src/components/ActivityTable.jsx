@@ -20,6 +20,8 @@ import {
   TextField,
   FormControlLabel,
   Typography,
+  Alert,
+  Snackbar,
 } from "@mui/material";
 import TableSortLabel from "@mui/material/TableSortLabel";
 import { visuallyHidden } from "@mui/utils";
@@ -38,6 +40,12 @@ import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
 import useEventsStore from "../store/eventsStore";
 import { ZohoContext } from "../App";
 import { getTypeOptionsFromConfig } from "../services/picklistConfigService";
+import SavedFiltersDrawer from "./SavedFiltersDrawer";
+import {
+  loadActivityFilterPreferences,
+  saveActivityFilters,
+  saveLatestActivityFilter,
+} from "../services/activityFilterPreferences";
 
 // Extend dayjs with plugins
 dayjs.extend(utc);
@@ -394,6 +402,12 @@ export default function ScheduleTable({
   const [staffContacts, setStaffContacts] = React.useState([]);
   const [filterStaff, setFilterStaff] = React.useState([]);
   const [staffLoadStatus, setStaffLoadStatus] = React.useState("idle");
+  const [savedFilters, setSavedFilters] = React.useState([]);
+  const [filterPreferencesLoaded, setFilterPreferencesLoaded] = React.useState(false);
+  const [savedFiltersOpen, setSavedFiltersOpen] = React.useState(false);
+  const [filterSaveInProgress, setFilterSaveInProgress] = React.useState(false);
+  const [filterFeedback, setFilterFeedback] = React.useState(null);
+  const selectionTouched = React.useRef(false);
 
   const staffList = React.useMemo(() => {
     if (staff && staff.length > 0) return staff;
@@ -423,6 +437,41 @@ export default function ScheduleTable({
       }
     }
   }, [loggedInUser]);
+
+  React.useEffect(() => {
+    selectionTouched.current = false;
+    setFilterPreferencesLoaded(false);
+    if (!loggedInUser?.id || typeof ZOHO?.CRM?.API?.searchRecord !== "function") {
+      setSavedFilters([]);
+      return undefined;
+    }
+
+    let cancelled = false;
+    loadActivityFilterPreferences(ZOHO, loggedInUser.id)
+      .then(({ savedFilters: loadedFilters, latestFilter }) => {
+        if (cancelled) return;
+        setSavedFilters((current) =>
+          current.length === 0 && loadedFilters.length === 0
+            ? current
+            : loadedFilters
+        );
+        if (latestFilter && !selectionTouched.current) {
+          setFilterType(latestFilter.filterType);
+          setFilterPriority(latestFilter.filterPriority);
+          setFilterUser(latestFilter.filterUser);
+          setFilterStaff(latestFilter.filterStaff);
+        }
+        setFilterPreferencesLoaded(true);
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setFilterFeedback({ severity: "error", message: error.message });
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [ZOHO, loggedInUser?.id]);
 
   const filterDateOptions = [
     { label: "Default", value: "Default" },
@@ -457,15 +506,18 @@ export default function ScheduleTable({
   // }, []);
 
   const handleTypeChange = (event) => {
+    selectionTouched.current = true;
     const value = event.target.value;
     setFilterType(typeof value === "string" ? value.split(",") : value);
   };
 
   const handlePriorityChange = (event) => {
+    selectionTouched.current = true;
     const value = event.target.value;
     setFilterPriority(typeof value === "string" ? value.split(",") : value);
   };
   const handleUserChange = (event) => {
+    selectionTouched.current = true;
     const value = event.target.value;
 
     if (value.includes("select_all")) {
@@ -488,6 +540,7 @@ export default function ScheduleTable({
   };
 
   const handleStaffChange = (event) => {
+    selectionTouched.current = true;
     const value = event.target.value;
     const arrayValue = typeof value === "string" ? value.split(",") : value;
 
@@ -507,6 +560,68 @@ export default function ScheduleTable({
     );
     setFilterStaff(cleaned);
   };
+
+  const currentFilter = () => ({
+    filterType: [...filterType],
+    filterPriority: [...filterPriority],
+    filterUser: [...filterUser],
+    filterStaff: [...filterStaff],
+  });
+
+  const applySavedFilter = (filter) => {
+    selectionTouched.current = true;
+    const selection = {
+      filterType: Array.isArray(filter.filterType) ? filter.filterType : [],
+      filterPriority: Array.isArray(filter.filterPriority) ? filter.filterPriority : [],
+      filterUser: Array.isArray(filter.filterUser) ? filter.filterUser : [],
+      filterStaff: Array.isArray(filter.filterStaff) ? filter.filterStaff : [],
+    };
+    setFilterType(selection.filterType);
+    setFilterPriority(selection.filterPriority);
+    setFilterUser(selection.filterUser);
+    setFilterStaff(selection.filterStaff);
+    saveLatestActivityFilter(ZOHO, loggedInUser?.id, selection).catch((error) => {
+      setFilterFeedback({ severity: "error", message: error.message });
+    });
+  };
+
+  const persistSavedFilters = async (next, successMessage) => {
+    setFilterSaveInProgress(true);
+    try {
+      await saveActivityFilters(
+        ZOHO,
+        loggedInUser?.id,
+        loggedInUser?.full_name,
+        next
+      );
+      setSavedFilters(next);
+      setFilterFeedback({ severity: "success", message: successMessage });
+    } catch (error) {
+      setFilterFeedback({ severity: "error", message: error.message });
+      throw error;
+    } finally {
+      setFilterSaveInProgress(false);
+    }
+  };
+
+  const saveCurrentFilter = (name) =>
+    persistSavedFilters(
+      [...savedFilters, { name: name || "Unnamed filter", ...currentFilter() }],
+      "Filter saved successfully"
+    );
+
+  const updateSavedFilter = async (index, updatedFilter) => {
+    const next = savedFilters.map((filter, position) =>
+      position === index ? { ...filter, ...updatedFilter } : filter
+    );
+    await persistSavedFilters(next, "Filter updated successfully");
+  };
+
+  const deleteSavedFilter = (index) =>
+    persistSavedFilters(
+      savedFilters.filter((_, position) => position !== index),
+      "Filter deleted successfully"
+    );
 
   const loadStaffContacts = async () => {
     if (staffList.length > 0) return;
@@ -552,6 +667,7 @@ export default function ScheduleTable({
   };
 
   const handleClearFilters = () => {
+    selectionTouched.current = true;
     // Step 1: Reset all filter states
     setFilterType([]);
     setFilterPriority([]);
@@ -562,6 +678,14 @@ export default function ScheduleTable({
     setFilterStaff([]);
     setCustomDateRange(null);
     setShowCleared(false); // Reset "Show Cleared" checkbox
+    saveLatestActivityFilter(ZOHO, loggedInUser?.id, {
+      filterType: [],
+      filterPriority: [],
+      filterUser: isAdmin ? [] : loggedInUser?.full_name ? [loggedInUser.full_name] : [],
+      filterStaff: [],
+    }).catch((error) => {
+      setFilterFeedback({ severity: "error", message: error.message });
+    });
     
     // Step 2: Check cache for "Default" key and restore data immediately
     const store = useEventsStore.getState();
@@ -1201,6 +1325,19 @@ export default function ScheduleTable({
           Clear filter
         </Button>
 
+        <Button
+          variant="outlined"
+          onClick={() => {
+            setSavedFiltersOpen(true);
+            loadStaffContacts();
+          }}
+          disabled={!filterPreferencesLoaded}
+          size="small"
+          sx={{ height: "30px", fontSize: "9pt", whiteSpace: "nowrap", px: 1.5 }}
+        >
+          Saved filters
+        </Button>
+
         <FormControlLabel
           control={
             <Checkbox
@@ -1536,6 +1673,34 @@ export default function ScheduleTable({
         handleClose={handleClose}
         setCustomDateRange={setCustomDateRange}
       />
+      <SavedFiltersDrawer
+        open={savedFiltersOpen}
+        onClose={() => setSavedFiltersOpen(false)}
+        savedFilters={savedFilters}
+        onApply={applySavedFilter}
+        onSave={saveCurrentFilter}
+        onUpdate={updateSavedFilter}
+        onDelete={deleteSavedFilter}
+        busy={filterSaveInProgress}
+        typeOptions={typeOptions}
+        priorityOptions={priorityOptions}
+        users={users}
+        staffList={staffList}
+      />
+      <Snackbar
+        open={Boolean(filterFeedback)}
+        autoHideDuration={6000}
+        onClose={() => setFilterFeedback(null)}
+        anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
+      >
+        <Alert
+          onClose={() => setFilterFeedback(null)}
+          severity={filterFeedback?.severity || "success"}
+          variant="filled"
+        >
+          {filterFeedback?.message}
+        </Alert>
+      </Snackbar>
     </>
   );
 }

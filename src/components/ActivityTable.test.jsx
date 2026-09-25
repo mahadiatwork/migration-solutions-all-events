@@ -1,5 +1,5 @@
 import React from "react";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import ScheduleTable from "./ActivityTable";
@@ -72,6 +72,7 @@ const makeZoho = (getRecord = vi.fn(), searchRecord) => ({
 function TableHarness({
   ZOHO,
   loggedInUser = adminUser,
+  staff = [],
   initialFilterDate = "Default",
   initialCustomDateRange = null,
   onFilterDateChange = () => {},
@@ -97,6 +98,7 @@ function TableHarness({
     <ScheduleTable
       ZOHO={ZOHO}
       users={users}
+      staff={staff}
       filterDate={filterDate}
       setFilterDate={handleFilterDateChange}
       loggedInUser={loggedInUser}
@@ -204,6 +206,144 @@ describe("ActivityTable", () => {
     expect(screen.getByText("Filter By Type, Priority")).toBeInTheDocument();
   });
 
+  it("saves, applies, edits, and deletes a named Type/Priority/User/Staff preset", async () => {
+    useEventsStore.setState({
+      events: [
+        makeEvent({
+          id: "ann-meeting",
+          Event_Title: "Ann Meeting",
+          Owner: { name: "Ann" },
+          Participants: [{ name: "Grace", participant: "staff-grace" }],
+        }),
+        makeEvent({
+          id: "bob-call",
+          Event_Title: "Bob Call",
+          Type_of_Activity: "Call",
+          Owner: { name: "Bob" },
+          Participants: [{ name: "Ada", participant: "staff-ada" }],
+        }),
+      ],
+    });
+    const preference = {
+      id: "preference-1",
+      Saved_Filters: JSON.stringify([
+        { name: "Calendar preset", priorityFilter: ["Low"] },
+      ]),
+      Latest_Filter: JSON.stringify({ priorityFilter: ["Low"] }),
+    };
+    const searchRecord = vi.fn().mockImplementation(() =>
+      Promise.resolve({ data: [{ ...preference }] })
+    );
+    const updateRecord = vi.fn().mockImplementation(({ APIData }) => {
+      Object.assign(preference, APIData);
+      return Promise.resolve({ data: [{ code: "SUCCESS" }] });
+    });
+    const ZOHO = { CRM: { API: { searchRecord, updateRecord, getRecord: vi.fn() } } };
+    const { user } = renderTable({
+      ZOHO,
+      staff: [
+        { id: "staff-grace", Full_Name: "Grace Hopper" },
+        { id: "staff-ada", Full_Name: "Ada Lovelace" },
+      ],
+    });
+
+    await waitFor(() => expect(searchRecord).toHaveBeenCalled());
+    await user.click(screen.getByRole("combobox", { name: "Type" }));
+    await user.click(screen.getByRole("option", { name: "Meeting" }));
+    await user.keyboard("{Escape}");
+    await user.click(screen.getByRole("combobox", { name: "Priority" }));
+    await user.click(screen.getByRole("option", { name: "High" }));
+    await user.keyboard("{Escape}");
+    await user.click(screen.getByRole("combobox", { name: "User" }));
+    await user.click(screen.getByRole("option", { name: "Ann" }));
+    await user.keyboard("{Escape}");
+    await user.click(screen.getByRole("combobox", { name: "Staff" }));
+    await user.click(screen.getByRole("option", { name: "Grace Hopper" }));
+    await user.keyboard("{Escape}");
+
+    expect(screen.getByText("Ann Meeting")).toBeInTheDocument();
+    expect(screen.queryByText("Bob Call")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Saved filters" }));
+    await user.type(screen.getByRole("textbox", { name: "Filter name" }), "Team focus");
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(await screen.findByRole("button", { name: "Apply filter Team focus" })).toBeInTheDocument();
+    expect(JSON.parse(preference.Saved_Filters)).toEqual([
+      { name: "Calendar preset", priorityFilter: ["Low"] },
+      {
+        name: "Team focus",
+        widget: "allActivity",
+        filterType: ["Meeting"],
+        filterPriority: ["High"],
+        filterUser: ["Ann"],
+        filterStaff: ["staff-grace"],
+      },
+    ]);
+
+    await user.click(screen.getByRole("button", { name: "Close saved filters" }));
+    await user.click(screen.getByRole("button", { name: "Clear filter" }));
+    expect(screen.getByText("Bob Call")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Saved filters" }));
+    await user.click(screen.getByRole("button", { name: "Apply filter Team focus" }));
+    expect(screen.queryByText("Bob Call")).not.toBeInTheDocument();
+    expect(JSON.parse(preference.Latest_Filter).allActivity).toEqual({
+      filterType: ["Meeting"],
+      filterPriority: ["High"],
+      filterUser: ["Ann"],
+      filterStaff: ["staff-grace"],
+    });
+
+    await user.click(screen.getByRole("button", { name: "Edit filter Team focus" }));
+    const editDialog = screen.getByRole("dialog", { name: "Edit filter" });
+    await user.clear(within(editDialog).getByRole("textbox", { name: "Filter name" }));
+    await user.type(within(editDialog).getByRole("textbox", { name: "Filter name" }), "Team updated");
+    await user.click(within(editDialog).getByRole("button", { name: "Update" }));
+    expect(await screen.findByRole("button", { name: "Apply filter Team updated" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Delete filter Team updated" }));
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Apply filter Team updated" })).not.toBeInTheDocument());
+    expect(JSON.parse(preference.Saved_Filters)).toEqual([
+      { name: "Calendar preset", priorityFilter: ["Low"] },
+    ]);
+  });
+
+  it("waits for preferences to load before opening saved filters", async () => {
+    let resolveSearch;
+    const searchRecord = vi.fn().mockImplementation(
+      () => new Promise((resolve) => { resolveSearch = resolve; })
+    );
+    const { user } = renderTable({
+      ZOHO: { CRM: { API: { searchRecord, getRecord: vi.fn() } } },
+    });
+
+    const savedButton = screen.getByRole("button", { name: "Saved filters" });
+    expect(savedButton).toBeDisabled();
+    await user.click(screen.getByRole("combobox", { name: "Type" }));
+    await user.click(screen.getByRole("option", { name: "Meeting" }));
+    await user.keyboard("{Escape}");
+
+    await act(async () => {
+      resolveSearch({
+        data: [{
+          id: "preference-1",
+          Saved_Filters: JSON.stringify([{
+            widget: "allActivity",
+            name: "Existing preset",
+            filterType: ["Call"],
+          }]),
+          Latest_Filter: JSON.stringify({
+            allActivity: { filterType: ["Call"] },
+          }),
+        }],
+      });
+    });
+
+    expect(savedButton).toBeEnabled();
+    expect(screen.getByRole("combobox", { name: "Type" })).toHaveTextContent("Meeting");
+    await user.click(savedButton);
+    expect(screen.getByRole("button", { name: "Apply filter Existing preset" })).toBeInTheDocument();
+  });
+
   it("uses configured Type filters while retaining types on existing events", async () => {
     useEventsStore.setState({ events: [makeEvent()] });
     const { user } = renderTable({
@@ -279,9 +419,9 @@ describe("ActivityTable", () => {
         }),
       ],
     });
-    const searchRecord = vi
-      .fn()
-      .mockResolvedValueOnce({
+    const searchRecord = vi.fn(({ Entity, page }) => {
+      if (Entity === "User_Preferences") return Promise.resolve({ data: [] });
+      if (page === 1) return Promise.resolve({
         data: [
           {
             id: "staff-grace",
@@ -297,8 +437,8 @@ describe("ActivityTable", () => {
           },
         ],
         info: { more_records: true },
-      })
-      .mockResolvedValueOnce({
+      });
+      return Promise.resolve({
         data: [
           {
             id: "staff-ada",
@@ -309,9 +449,12 @@ describe("ActivityTable", () => {
         ],
         info: { more_records: false },
       });
+    });
     const { user } = renderTable({ ZOHO: makeZoho(vi.fn(), searchRecord) });
 
-    expect(searchRecord).not.toHaveBeenCalled();
+    expect(
+      searchRecord.mock.calls.filter(([request]) => request.Entity === "Contacts")
+    ).toHaveLength(0);
     const documentAlias = document.document;
     delete document.document;
     try {
@@ -323,15 +466,20 @@ describe("ActivityTable", () => {
       });
     }
 
-    await waitFor(() => expect(searchRecord).toHaveBeenCalledTimes(2));
-    expect(searchRecord).toHaveBeenNthCalledWith(1, {
+    await waitFor(() =>
+      expect(searchRecord.mock.calls.filter(([request]) => request.Entity === "Contacts")).toHaveLength(2)
+    );
+    const staffCalls = searchRecord.mock.calls
+      .filter(([request]) => request.Entity === "Contacts")
+      .map(([request]) => request);
+    expect(staffCalls[0]).toEqual({
       Entity: "Contacts",
       Type: "criteria",
       Query: "(Staff_Type:equals:Active)",
       page: 1,
       per_page: 200,
     });
-    expect(searchRecord).toHaveBeenNthCalledWith(2, {
+    expect(staffCalls[1]).toEqual({
       Entity: "Contacts",
       Type: "criteria",
       Query: "(Staff_Type:equals:Active)",
