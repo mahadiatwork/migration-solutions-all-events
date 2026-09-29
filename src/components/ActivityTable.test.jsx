@@ -249,15 +249,22 @@ describe("ActivityTable", () => {
         }),
       ],
     });
-    const preference = {
-      id: "preference-1",
+    const calendarPreference = {
+      id: "calendar-preference",
+      Name: "Calendar Preference",
       Saved_Filters: JSON.stringify([
         { name: "Calendar preset", priorityFilter: ["Low"] },
       ]),
       Latest_Filter: JSON.stringify({ priorityFilter: ["Low"] }),
     };
+    const preference = {
+      id: "preference-1",
+      Name: "All Activity Preference",
+      Saved_Filters: "[]",
+      Latest_Filter: "",
+    };
     const searchRecord = vi.fn().mockImplementation(() =>
-      Promise.resolve({ data: [{ ...preference }] })
+      Promise.resolve({ data: [{ ...calendarPreference }, { ...preference }] })
     );
     const updateRecord = vi.fn().mockImplementation(({ APIData }) => {
       Object.assign(preference, APIData);
@@ -295,10 +302,8 @@ describe("ActivityTable", () => {
 
     expect(await screen.findByRole("button", { name: "Apply filter Team focus" })).toBeInTheDocument();
     expect(JSON.parse(preference.Saved_Filters)).toEqual([
-      { name: "Calendar preset", priorityFilter: ["Low"] },
       {
         name: "Team focus",
-        widget: "allActivity",
         filterType: ["Meeting"],
         filterPriority: ["High"],
         filterUser: ["Ann"],
@@ -312,7 +317,7 @@ describe("ActivityTable", () => {
     await user.click(screen.getByRole("button", { name: "Saved filters" }));
     await user.click(screen.getByRole("button", { name: "Apply filter Team focus" }));
     expect(screen.queryByText("Bob Call")).not.toBeInTheDocument();
-    expect(JSON.parse(preference.Latest_Filter).allActivity).toEqual({
+    expect(JSON.parse(preference.Latest_Filter)).toEqual({
       filterType: ["Meeting"],
       filterPriority: ["High"],
       filterUser: ["Ann"],
@@ -327,7 +332,8 @@ describe("ActivityTable", () => {
     expect(await screen.findByRole("button", { name: "Apply filter Team updated" })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Delete filter Team updated" }));
     await waitFor(() => expect(screen.queryByRole("button", { name: "Apply filter Team updated" })).not.toBeInTheDocument());
-    expect(JSON.parse(preference.Saved_Filters)).toEqual([
+    expect(JSON.parse(preference.Saved_Filters)).toEqual([]);
+    expect(JSON.parse(calendarPreference.Saved_Filters)).toEqual([
       { name: "Calendar preset", priorityFilter: ["Low"] },
     ]);
   });
@@ -351,14 +357,12 @@ describe("ActivityTable", () => {
       resolveSearch({
         data: [{
           id: "preference-1",
+          Name: "All Activity Preference",
           Saved_Filters: JSON.stringify([{
-            widget: "allActivity",
             name: "Existing preset",
             filterType: ["Call"],
           }]),
-          Latest_Filter: JSON.stringify({
-            allActivity: { filterType: ["Call"] },
-          }),
+          Latest_Filter: JSON.stringify({ filterType: ["Call"] }),
         }],
       });
     });

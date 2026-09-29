@@ -1,21 +1,12 @@
-/**
- * All Activity and Activity Calendar share one User_Preferences record per user.
- * Keep Calendar's untagged Saved_Filters entries and the legacy Latest_Filter
- * fields intact when writing All Activity preferences.
- */
 const MODULE = "User_Preferences";
+const FIELD_NAME = "Name";
 const FIELD_USER = "Preference_Of";
 const FIELD_SAVED_FILTERS = "Saved_Filters";
 const FIELD_LATEST_FILTER = "Latest_Filter";
-const WIDGET = "allActivity";
+const PREFERENCE_NAME = "All Activity Preference";
+const LEGACY_WIDGET = "allActivity";
 
 const emptyPreferences = () => ({ savedFilters: [], latestFilter: null });
-
-const emptyCalendarLatest = () => ({
-  priorityFilter: [],
-  activityTypeFilter: [],
-  userFilter: [],
-});
 
 const isObject = (value) =>
   value !== null && typeof value === "object" && !Array.isArray(value);
@@ -37,13 +28,19 @@ const parseJsonField = (raw, field, fallback) => {
   return value;
 };
 
-const normalizeActivityFilter = (filter) => ({
-  ...filter,
-  filterType: Array.isArray(filter.filterType) ? filter.filterType : [],
-  filterPriority: Array.isArray(filter.filterPriority) ? filter.filterPriority : [],
-  filterUser: Array.isArray(filter.filterUser) ? filter.filterUser : [],
-  filterStaff: Array.isArray(filter.filterStaff) ? filter.filterStaff : [],
-});
+const normalizeActivityFilter = (filter) => {
+  const normalized = { ...filter };
+  delete normalized.widget;
+  return {
+    ...normalized,
+    filterType: Array.isArray(filter.filterType) ? filter.filterType : [],
+    filterPriority: Array.isArray(filter.filterPriority)
+      ? filter.filterPriority
+      : [],
+    filterUser: Array.isArray(filter.filterUser) ? filter.filterUser : [],
+    filterStaff: Array.isArray(filter.filterStaff) ? filter.filterStaff : [],
+  };
+};
 
 const errorMessage = (result, fallback) =>
   result?.details?.message || result?.message || fallback;
@@ -59,26 +56,98 @@ const assertWriteSucceeded = (response, action) => {
   }
 };
 
-const searchPreferenceRecord = async (api, userId) => {
+const searchPreferenceRecords = async (api, userId) => {
   const response = await api.searchRecord({
     Entity: MODULE,
     Type: "criteria",
     Query: `(${FIELD_USER}:equals:${userId})`,
   });
   if (!response) throw new Error("Zoho returned no User_Preferences response");
-  if (response?.code === "NO_DATA") return null;
+  if (response?.code === "NO_DATA") return [];
   if (
     (response?.code && response.code !== "SUCCESS") ||
     String(response?.status || "").toLowerCase() === "error"
   ) {
     throw new Error(errorMessage(response, "Failed to load User_Preferences"));
   }
-  const records = Array.isArray(response?.data)
+  return Array.isArray(response?.data)
     ? response.data
     : Array.isArray(response?.details)
       ? response.details
       : [];
-  return records[0] || null;
+};
+
+const findActivityPreference = (records) =>
+  records.find((record) => record?.[FIELD_NAME] === PREFERENCE_NAME) || null;
+
+const readLegacySavedFilters = (records) => {
+  for (const record of records) {
+    let filters;
+    try {
+      filters = parseJsonField(
+        record?.[FIELD_SAVED_FILTERS],
+        FIELD_SAVED_FILTERS,
+        []
+      );
+    } catch (error) {
+      console.warn("Could not parse legacy All Activity saved filters", error);
+      continue;
+    }
+    const activityFilters = filters.filter(
+      (filter) => isObject(filter) && filter.widget === LEGACY_WIDGET
+    );
+    if (activityFilters.length > 0) {
+      return activityFilters.map(normalizeActivityFilter);
+    }
+  }
+  return [];
+};
+
+const readLegacyLatestFilter = (records) => {
+  for (const record of records) {
+    let latest;
+    try {
+      latest = parseJsonField(
+        record?.[FIELD_LATEST_FILTER],
+        FIELD_LATEST_FILTER,
+        {}
+      );
+    } catch (error) {
+      console.warn("Could not parse legacy All Activity latest filter", error);
+      continue;
+    }
+    if (isObject(latest.allActivity)) {
+      return normalizeActivityFilter(latest.allActivity);
+    }
+  }
+  return null;
+};
+
+const loadDedicatedPreferences = (record) => {
+  let savedFilters = [];
+  let latestFilter = null;
+  try {
+    savedFilters = parseJsonField(
+      record[FIELD_SAVED_FILTERS],
+      FIELD_SAVED_FILTERS,
+      []
+    )
+      .filter(isObject)
+      .map(normalizeActivityFilter);
+  } catch (error) {
+    console.warn("Could not parse All Activity saved filters", error);
+  }
+  try {
+    const latest = parseJsonField(
+      record[FIELD_LATEST_FILTER],
+      FIELD_LATEST_FILTER,
+      null
+    );
+    latestFilter = isObject(latest) ? normalizeActivityFilter(latest) : null;
+  } catch (error) {
+    console.warn("Could not parse All Activity latest filter", error);
+  }
+  return { savedFilters, latestFilter };
 };
 
 const requireApi = (ZOHO, userId) => {
@@ -90,7 +159,7 @@ const requireApi = (ZOHO, userId) => {
   return api;
 };
 
-const writePreference = async (api, record, userId, userDisplayName, fields) => {
+const writePreference = async (api, record, userId, fields) => {
   if (record) {
     if (typeof api.updateRecord !== "function") {
       throw new Error("Zoho CRM updateRecord is unavailable");
@@ -112,9 +181,7 @@ const writePreference = async (api, record, userId, userDisplayName, fields) => 
   const response = await api.insertRecord({
     Entity: MODULE,
     APIData: {
-      Name: userDisplayName?.trim()
-        ? `${userDisplayName.trim()} - Preference`
-        : "User - Preference",
+      [FIELD_NAME]: PREFERENCE_NAME,
       [FIELD_USER]: userId,
       ...fields,
     },
@@ -122,42 +189,19 @@ const writePreference = async (api, record, userId, userDisplayName, fields) => 
   assertWriteSucceeded(response, "create activity filters");
 };
 
-/** Read only this widget's preferences from the user's shared CRM record. */
+/** Load this widget's dedicated row, with a read-only fallback for shared legacy data. */
 export async function loadActivityFilterPreferences(ZOHO, userId) {
   if (!userId || typeof ZOHO?.CRM?.API?.searchRecord !== "function") {
     return emptyPreferences();
   }
 
   try {
-    const record = await searchPreferenceRecord(ZOHO.CRM.API, userId);
-    if (!record) return emptyPreferences();
-    let allFilters = [];
-    let latest = emptyCalendarLatest();
-    try {
-      allFilters = parseJsonField(
-        record[FIELD_SAVED_FILTERS],
-        FIELD_SAVED_FILTERS,
-        []
-      );
-    } catch (error) {
-      console.warn("Could not parse All Activity saved filters", error);
-    }
-    try {
-      latest = parseJsonField(
-        record[FIELD_LATEST_FILTER],
-        FIELD_LATEST_FILTER,
-        emptyCalendarLatest()
-      );
-    } catch (error) {
-      console.warn("Could not parse All Activity latest filter", error);
-    }
+    const records = await searchPreferenceRecords(ZOHO.CRM.API, userId);
+    const preference = findActivityPreference(records);
+    if (preference) return loadDedicatedPreferences(preference);
     return {
-      savedFilters: allFilters
-        .filter((filter) => isObject(filter) && filter.widget === WIDGET)
-        .map(normalizeActivityFilter),
-      latestFilter: isObject(latest.allActivity)
-        ? normalizeActivityFilter(latest.allActivity)
-        : null,
+      savedFilters: readLegacySavedFilters(records),
+      latestFilter: readLegacyLatestFilter(records),
     };
   } catch (error) {
     if (error?.code === "NO_DATA") return emptyPreferences();
@@ -165,55 +209,57 @@ export async function loadActivityFilterPreferences(ZOHO, userId) {
   }
 }
 
-/** Replace only All Activity presets; preserve Calendar and other widget entries. */
+/** Replace only the presets in the dedicated All Activity preference row. */
 export async function saveActivityFilters(
   ZOHO,
   userId,
   userDisplayName,
   filtersArray
 ) {
+  // Keep the existing call signature; record identity must not depend on a mutable name.
+  void userDisplayName;
   if (!Array.isArray(filtersArray) || !filtersArray.every(isObject)) {
     throw new Error("Activity filters must be an array of filter objects");
   }
   const api = requireApi(ZOHO, userId);
-  const record = await searchPreferenceRecord(api, userId);
-  const existing = record
-    ? parseJsonField(record[FIELD_SAVED_FILTERS], FIELD_SAVED_FILTERS, [])
-    : [];
-  const otherFilters = existing.filter(
-    (filter) => !isObject(filter) || filter.widget !== WIDGET
-  );
-  const activityFilters = filtersArray.map((filter) => ({
-    ...normalizeActivityFilter(filter),
-    widget: WIDGET,
-  }));
-  await writePreference(api, record, userId, userDisplayName, {
-    [FIELD_SAVED_FILTERS]: JSON.stringify([...otherFilters, ...activityFilters]),
-    ...(!record && {
-      [FIELD_LATEST_FILTER]: JSON.stringify(emptyCalendarLatest()),
-    }),
-  });
+  const records = await searchPreferenceRecords(api, userId);
+  const preference = findActivityPreference(records);
+  if (preference) {
+    parseJsonField(
+      preference[FIELD_SAVED_FILTERS],
+      FIELD_SAVED_FILTERS,
+      []
+    );
+  }
+  const fields = {
+    [FIELD_SAVED_FILTERS]: JSON.stringify(
+      filtersArray.map(normalizeActivityFilter)
+    ),
+  };
+  if (!preference) {
+    const legacyLatest = readLegacyLatestFilter(records);
+    if (legacyLatest) {
+      fields[FIELD_LATEST_FILTER] = JSON.stringify(legacyLatest);
+    }
+  }
+  await writePreference(api, preference, userId, fields);
 }
 
-/** Merge the latest All Activity selection into Calendar's legacy object. */
+/** Save the latest selection in the dedicated All Activity preference row. */
 export async function saveLatestActivityFilter(ZOHO, userId, filter) {
-  if (!isObject(filter)) throw new Error("Latest activity filter must be an object");
+  if (!isObject(filter)) {
+    throw new Error("Latest activity filter must be an object");
+  }
   const api = requireApi(ZOHO, userId);
-  const record = await searchPreferenceRecord(api, userId);
-  const latest = record
-    ? parseJsonField(
-        record[FIELD_LATEST_FILTER],
-        FIELD_LATEST_FILTER,
-        emptyCalendarLatest()
-      )
-    : emptyCalendarLatest();
-  const mergedLatest = {
-    ...emptyCalendarLatest(),
-    ...latest,
-    allActivity: normalizeActivityFilter(filter),
+  const records = await searchPreferenceRecords(api, userId);
+  const preference = findActivityPreference(records);
+  const fields = {
+    [FIELD_LATEST_FILTER]: JSON.stringify(normalizeActivityFilter(filter)),
   };
-  await writePreference(api, record, userId, null, {
-    [FIELD_LATEST_FILTER]: JSON.stringify(mergedLatest),
-    ...(!record && { [FIELD_SAVED_FILTERS]: JSON.stringify([]) }),
-  });
+  if (!preference) {
+    fields[FIELD_SAVED_FILTERS] = JSON.stringify(
+      readLegacySavedFilters(records)
+    );
+  }
+  await writePreference(api, preference, userId, fields);
 }

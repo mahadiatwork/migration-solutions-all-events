@@ -5,10 +5,12 @@ import {
   saveLatestActivityFilter,
 } from "./activityFilterPreferences";
 
-const makeZoho = (record = null) => ({
+const makeZoho = (records = null) => ({
   CRM: {
     API: {
-      searchRecord: vi.fn().mockResolvedValue({ data: record ? [record] : [] }),
+      searchRecord: vi.fn().mockResolvedValue({
+        data: Array.isArray(records) ? records : records ? [records] : [],
+      }),
       updateRecord: vi.fn().mockResolvedValue({
         data: [{ code: "SUCCESS", status: "success" }],
       }),
@@ -29,49 +31,104 @@ const activityFilter = {
   showCleared: true,
 };
 
-describe("activityFilterPreferences", () => {
-  it("loads only All Activity presets and its latest filter", async () => {
-    const zoho = makeZoho({
-      Saved_Filters: JSON.stringify([
-        { name: "Calendar", priorityFilter: ["High"] },
-        { widget: "other", name: "Other" },
-        { widget: "allActivity", ...activityFilter },
-      ]),
-      Latest_Filter: JSON.stringify({
-        priorityFilter: ["Low"],
-        activityTypeFilter: [],
-        userFilter: ["Alice"],
-        allActivity: { filterType: ["Meeting"], showCleared: false },
-      }),
-    });
+const dedicatedRecord = (overrides = {}) => ({
+  id: "all-activity-preference",
+  Name: "All Activity Preference",
+  Saved_Filters: JSON.stringify([activityFilter]),
+  Latest_Filter: JSON.stringify({ filterType: ["Meeting"] }),
+  ...overrides,
+});
 
-    expect(await loadActivityFilterPreferences(zoho, "user-1")).toEqual({
-      savedFilters: [{ widget: "allActivity", ...activityFilter }],
+describe("activityFilterPreferences", () => {
+  it("selects and updates the dedicated All Activity row when Calendar is returned first", async () => {
+    const calendar = {
+      id: "calendar-preference",
+      Name: "Calendar Preference",
+      Saved_Filters: JSON.stringify([{ name: "Calendar" }]),
+      Latest_Filter: JSON.stringify({ priorityFilter: ["Low"] }),
+    };
+    const zoho = makeZoho([calendar, dedicatedRecord()]);
+
+    await expect(loadActivityFilterPreferences(zoho, "user-1")).resolves.toEqual({
+      savedFilters: [activityFilter],
       latestFilter: {
         filterType: ["Meeting"],
         filterPriority: [],
         filterUser: [],
         filterStaff: [],
-        showCleared: false,
       },
     });
+
+    await saveActivityFilters(zoho, "user-1", "Alice", [activityFilter]);
+
     expect(zoho.CRM.API.searchRecord).toHaveBeenCalledWith({
       Entity: "User_Preferences",
       Type: "criteria",
       Query: "(Preference_Of:equals:user-1)",
     });
+    expect(zoho.CRM.API.updateRecord).toHaveBeenCalledWith({
+      Entity: "User_Preferences",
+      RecordID: "all-activity-preference",
+      APIData: {
+        id: "all-activity-preference",
+        Saved_Filters: JSON.stringify([activityFilter]),
+      },
+    });
+    expect(zoho.CRM.API.insertRecord).not.toHaveBeenCalled();
   });
 
-  it("still loads saved presets when latest data is malformed", async () => {
+  it("reads tagged shared data only as a legacy fallback and strips its marker", async () => {
     const zoho = makeZoho({
-      Saved_Filters: JSON.stringify([{ widget: "allActivity", ...activityFilter }]),
-      Latest_Filter: "not JSON",
+      id: "legacy-calendar-preference",
+      Name: "Alice - Preference",
+      Saved_Filters: JSON.stringify([
+        { name: "Calendar", priorityFilter: ["High"] },
+        { widget: "allActivity", ...activityFilter },
+      ]),
+      Latest_Filter: JSON.stringify({
+        priorityFilter: ["Low"],
+        allActivity: { filterType: ["Call"], filterUser: ["Alice"] },
+      }),
     });
+
+    await expect(loadActivityFilterPreferences(zoho, "user-1")).resolves.toEqual({
+      savedFilters: [activityFilter],
+      latestFilter: {
+        filterType: ["Call"],
+        filterPriority: [],
+        filterUser: ["Alice"],
+        filterStaff: [],
+      },
+    });
+  });
+
+  it("does not fall back to Calendar when a dedicated row exists", async () => {
+    const zoho = makeZoho([
+      {
+        id: "legacy-calendar-preference",
+        Saved_Filters: JSON.stringify([
+          { widget: "allActivity", name: "Legacy preset" },
+        ]),
+        Latest_Filter: JSON.stringify({
+          allActivity: { filterType: ["Legacy"] },
+        }),
+      },
+      dedicatedRecord({ Saved_Filters: "[]", Latest_Filter: "" }),
+    ]);
+
+    await expect(loadActivityFilterPreferences(zoho, "user-1")).resolves.toEqual({
+      savedFilters: [],
+      latestFilter: null,
+    });
+  });
+
+  it("still loads dedicated presets when its latest data is malformed", async () => {
+    const zoho = makeZoho(dedicatedRecord({ Latest_Filter: "not JSON" }));
     const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
 
     try {
       expect(await loadActivityFilterPreferences(zoho, "user-1")).toEqual({
-        savedFilters: [{ widget: "allActivity", ...activityFilter }],
+        savedFilters: [activityFilter],
         latestFilter: null,
       });
     } finally {
@@ -79,113 +136,108 @@ describe("activityFilterPreferences", () => {
     }
   });
 
-  it("replaces only tagged presets while preserving Calendar and other entries", async () => {
-    const calendar = {
-      name: "Calendar",
-      priorityFilter: ["High"],
-      activityTypeFilter: ["Meeting"],
-      userFilter: ["Alice"],
-    };
-    const other = { widget: "anotherWidget", name: "Other" };
+  it("updates latest state directly without rewriting saved presets", async () => {
+    const zoho = makeZoho(dedicatedRecord());
+
+    await saveLatestActivityFilter(zoho, "user-1", activityFilter);
+
+    expect(zoho.CRM.API.updateRecord).toHaveBeenCalledWith({
+      Entity: "User_Preferences",
+      RecordID: "all-activity-preference",
+      APIData: {
+        id: "all-activity-preference",
+        Latest_Filter: JSON.stringify(activityFilter),
+      },
+    });
+    expect(zoho.CRM.API.updateRecord.mock.calls[0][0].APIData).not.toHaveProperty(
+      "Saved_Filters"
+    );
+  });
+
+  it("migrates legacy presets when the first dedicated write saves latest state", async () => {
     const zoho = makeZoho({
-      id: "record-1",
+      id: "legacy-calendar-preference",
+      Name: "Alice - Preference",
       Saved_Filters: JSON.stringify([
-        calendar,
-        { widget: "allActivity", name: "Old" },
-        other,
+        { name: "Calendar" },
+        { widget: "allActivity", ...activityFilter },
       ]),
       Latest_Filter: JSON.stringify({ priorityFilter: ["Low"] }),
     });
 
-    await saveActivityFilters(zoho, "user-1", "Alice", [activityFilter]);
-
-    expect(zoho.CRM.API.updateRecord).toHaveBeenCalledOnce();
-    const request = zoho.CRM.API.updateRecord.mock.calls[0][0];
-    expect(request).toMatchObject({
-      Entity: "User_Preferences",
-      RecordID: "record-1",
-      APIData: { id: "record-1" },
+    await saveLatestActivityFilter(zoho, "user-1", {
+      filterType: ["Meeting"],
     });
-    expect(JSON.parse(request.APIData.Saved_Filters)).toEqual([
-      calendar,
-      other,
-      { ...activityFilter, widget: "allActivity" },
-    ]);
-    expect(request.APIData).not.toHaveProperty("Latest_Filter");
-    expect(zoho.CRM.API.insertRecord).not.toHaveBeenCalled();
+
+    const request = zoho.CRM.API.insertRecord.mock.calls[0][0];
+    expect(request).toEqual({
+      Entity: "User_Preferences",
+      APIData: {
+        Name: "All Activity Preference",
+        Preference_Of: "user-1",
+        Saved_Filters: JSON.stringify([activityFilter]),
+        Latest_Filter: JSON.stringify({
+          filterType: ["Meeting"],
+          filterPriority: [],
+          filterUser: [],
+          filterStaff: [],
+        }),
+      },
+    });
+    expect(zoho.CRM.API.updateRecord).not.toHaveBeenCalled();
   });
 
-  it("merges latest All Activity state without changing Calendar's legacy fields", async () => {
+  it("migrates legacy latest state when the first dedicated write saves presets", async () => {
     const zoho = makeZoho({
-      id: "record-2",
+      id: "legacy-calendar-preference",
+      Name: "Alice - Preference",
       Saved_Filters: JSON.stringify([{ name: "Calendar" }]),
       Latest_Filter: JSON.stringify({
-        priorityFilter: ["High"],
-        activityTypeFilter: ["Meeting"],
-        userFilter: ["Alice"],
-        selectedColumns: ["user-1"],
-        allActivity: { filterType: ["Old"] },
+        priorityFilter: ["Low"],
+        allActivity: { filterType: ["Call"], filterStaff: ["12345"] },
       }),
     });
 
-    await saveLatestActivityFilter(zoho, "user-1", activityFilter);
-
-    const request = zoho.CRM.API.updateRecord.mock.calls[0][0];
-    expect(JSON.parse(request.APIData.Latest_Filter)).toEqual({
-      priorityFilter: ["High"],
-      activityTypeFilter: ["Meeting"],
-      userFilter: ["Alice"],
-      selectedColumns: ["user-1"],
-      allActivity: activityFilter,
-    });
-    expect(request.APIData).not.toHaveProperty("Saved_Filters");
-  });
-
-  it("creates a preference record when saving the latest filter first", async () => {
-    const zoho = makeZoho();
-
-    await saveLatestActivityFilter(zoho, "user-1", activityFilter);
-
-    const request = zoho.CRM.API.insertRecord.mock.calls[0][0];
-    expect(request).toMatchObject({
-      Entity: "User_Preferences",
-      APIData: {
-        Name: "User - Preference",
-        Preference_Of: "user-1",
-        Saved_Filters: "[]",
-      },
-    });
-    expect(JSON.parse(request.APIData.Latest_Filter)).toEqual({
-      priorityFilter: [],
-      activityTypeFilter: [],
-      userFilter: [],
-      allActivity: activityFilter,
-    });
-  });
-
-  it("creates a preference record with a tagged preset and Calendar-compatible latest", async () => {
-    const zoho = makeZoho();
-    zoho.CRM.API.searchRecord.mockResolvedValue({ code: "NO_DATA", status: "error" });
-
-    await saveActivityFilters(zoho, "user-1", "Alice", [activityFilter]);
+    await saveActivityFilters(zoho, "user-1", "Alice", [
+      { widget: "allActivity", ...activityFilter },
+    ]);
 
     const request = zoho.CRM.API.insertRecord.mock.calls[0][0];
     expect(request.APIData).toMatchObject({
-      Name: "Alice - Preference",
+      Name: "All Activity Preference",
       Preference_Of: "user-1",
+      Saved_Filters: JSON.stringify([activityFilter]),
     });
-    expect(JSON.parse(request.APIData.Saved_Filters)).toEqual([
-      { ...activityFilter, widget: "allActivity" },
-    ]);
     expect(JSON.parse(request.APIData.Latest_Filter)).toEqual({
-      priorityFilter: [],
-      activityTypeFilter: [],
-      userFilter: [],
+      filterType: ["Call"],
+      filterStaff: ["12345"],
+      filterPriority: [],
+      filterUser: [],
+    });
+    expect(zoho.CRM.API.updateRecord).not.toHaveBeenCalled();
+  });
+
+  it("creates an isolated preference row when no prior preference exists", async () => {
+    const zoho = makeZoho();
+    zoho.CRM.API.searchRecord.mockResolvedValue({
+      code: "NO_DATA",
+      status: "error",
+    });
+
+    await saveActivityFilters(zoho, "user-1", "Alice", [activityFilter]);
+
+    expect(zoho.CRM.API.insertRecord).toHaveBeenCalledWith({
+      Entity: "User_Preferences",
+      APIData: {
+        Name: "All Activity Preference",
+        Preference_Of: "user-1",
+        Saved_Filters: JSON.stringify([activityFilter]),
+      },
     });
   });
 
-  it("rejects failed Zoho writes and malformed shared data instead of overwriting it", async () => {
-    const failedWrite = makeZoho({ id: "record-3", Saved_Filters: "[]" });
+  it("rejects failed writes and malformed dedicated data without touching Calendar", async () => {
+    const failedWrite = makeZoho(dedicatedRecord());
     failedWrite.CRM.API.updateRecord.mockResolvedValue({
       data: [{ code: "INVALID_DATA", message: "Permission denied" }],
     });
@@ -193,7 +245,9 @@ describe("activityFilterPreferences", () => {
       saveActivityFilters(failedWrite, "user-1", "Alice", [activityFilter])
     ).rejects.toThrow("Permission denied");
 
-    const malformed = makeZoho({ id: "record-4", Saved_Filters: "not JSON" });
+    const malformed = makeZoho(
+      dedicatedRecord({ Saved_Filters: "not JSON" })
+    );
     await expect(
       saveActivityFilters(malformed, "user-1", "Alice", [activityFilter])
     ).rejects.toThrow("Invalid Saved_Filters JSON");
@@ -205,15 +259,15 @@ describe("activityFilterPreferences", () => {
       savedFilters: [],
       latestFilter: null,
     });
-    await expect(saveActivityFilters(null, "user-1", "Alice", [])).rejects.toThrow(
-      "Zoho CRM API is unavailable"
-    );
+    await expect(
+      saveActivityFilters(null, "user-1", "Alice", [])
+    ).rejects.toThrow("Zoho CRM API is unavailable");
     await expect(saveLatestActivityFilter(makeZoho(), "", {})).rejects.toThrow(
       "User id required"
     );
   });
 
-  it("rejects a failed preference lookup so existing presets cannot be replaced as an empty list", async () => {
+  it("rejects a failed lookup instead of replacing preferences as empty", async () => {
     const zoho = makeZoho();
     zoho.CRM.API.searchRecord.mockRejectedValue(new Error("Network unavailable"));
 
