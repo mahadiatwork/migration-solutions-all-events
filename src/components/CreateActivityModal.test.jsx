@@ -7,11 +7,15 @@ import CreateActivityModal, {
 import useEventsStore from "../store/eventsStore";
 
 vi.mock("./FirstComponent", () => ({
-  default: ({ handleInputChange }) => (
+  default: ({ formData, handleInputChange }) => (
     <div>
+      <output data-testid="create-type">{formData.Type_of_Activity}</output>
+      <output data-testid="create-title">{formData.Event_Title}</output>
+      <output data-testid="create-regarding">{formData.Regarding}</output>
       <button
         type="button"
         onClick={() => {
+          handleInputChange("Type_of_Activity", "Meeting");
           handleInputChange("duration", 60);
           handleInputChange("scheduledWith", [
             {
@@ -27,6 +31,7 @@ vi.mock("./FirstComponent", () => ({
       <button
         type="button"
         onClick={() => {
+          handleInputChange("Type_of_Activity", "Meeting");
           handleInputChange("duration", 60);
           handleInputChange("Create_Separate_Event_For_Each_Contact", true);
           handleInputChange("scheduledWith", [
@@ -162,6 +167,24 @@ describe("CreateActivityModal controller", () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
   });
 
+  it("does not use the first CRM picklist rows as create defaults", () => {
+    renderModal(
+      { CRM: { API: { insertRecord: vi.fn() } } },
+      {
+        picklistConfig: {
+          _source: "custom_module",
+          types: ["Fruit"],
+          regarding: { Fruit: ["Pear"] },
+          durations: [5],
+        },
+      }
+    );
+
+    expect(screen.getByTestId("create-type")).toHaveTextContent("");
+    expect(screen.getByTestId("create-title")).toHaveTextContent("New Activity");
+    expect(screen.getByTestId("create-regarding")).toHaveTextContent("");
+  });
+
   it("creates an ordinary event, logs it, and updates local state", async () => {
     const insertRecord = vi.fn(async ({ Entity }) =>
       Entity === "Events"
@@ -185,7 +208,7 @@ describe("CreateActivityModal controller", () => {
       Entity: "Events",
       Trigger: ["workflow"],
       APIData: {
-        Event_Title: "New Meeting",
+        Event_Title: "New Activity",
         Participants: [
           expect.objectContaining({ participant: "contact-1", name: "Ada Lovelace" }),
         ],
@@ -196,7 +219,7 @@ describe("CreateActivityModal controller", () => {
       expect.objectContaining({ Entity: "Log_Module" })
     );
     expect(useEventsStore.getState().events).toEqual([
-      expect.objectContaining({ id: "event-1", Event_Title: "New Meeting" }),
+      expect.objectContaining({ id: "event-1", Event_Title: "New Activity" }),
     ]);
     expect(props.setEvents).toHaveBeenCalledOnce();
     expect(props.setSelectedRowIndex).toHaveBeenCalledWith("event-1");
@@ -287,8 +310,8 @@ describe("CreateActivityModal controller", () => {
       .filter((request) => request.Entity === "Events");
     expect(eventCalls).toHaveLength(2);
     expect(eventCalls.map((request) => request.APIData.Event_Title)).toEqual([
-      "New Meeting - Ada Lovelace",
-      "New Meeting - Grace Hopper",
+      "New Activity - Ada Lovelace",
+      "New Activity - Grace Hopper",
     ]);
     expect(
       eventCalls.map((request) => request.APIData.Participants[0].participant)

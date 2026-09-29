@@ -24,13 +24,14 @@ import { DateTimePicker, LocalizationProvider } from "@mui/x-date-pickers";
 import { DesktopDateTimePicker } from '@mui/x-date-pickers/DesktopDateTimePicker';
 import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
 import dayjs from "dayjs";
-import { getRegardingOptions, reminderMapping } from "./helperFunc";
+import { reminderMapping } from "./helperFunc";
 import {
   DEFAULT_ACTIVITY_TYPES,
   getCreatableDurationOptionsFromConfig,
   getDurationOptionsFromConfig,
   getTypeOptionsFromConfig,
 } from "../services/picklistConfigService";
+import { getActivityTypeSelection } from "./createActivityDefaults";
 
 const activityTypeResources = new Map(
   DEFAULT_ACTIVITY_TYPES.map((type, index) => [type, index + 1])
@@ -193,22 +194,6 @@ const FirstComponent = ({
   useEffect(() => {
     if (isEditMode || picklistConfig?._source !== "custom_module") return;
 
-    const configuredTypes = getTypeOptionsFromConfig(picklistConfig);
-    const nextType = configuredTypes.includes(formData.Type_of_Activity)
-      ? formData.Type_of_Activity
-      : configuredTypes[0] || "";
-    if (nextType !== formData.Type_of_Activity) {
-      handleInputChange("Type_of_Activity", nextType);
-
-      const resource = activityTypeResources.get(nextType);
-      if (resource != null) handleInputChange("resource", resource);
-    }
-
-    const regardingOptions = getRegardingOptions(nextType, "", picklistConfig);
-    if (!regardingOptions.includes(formData.Regarding)) {
-      handleInputChange("Regarding", regardingOptions[0] || "");
-    }
-
     const configuredDurations =
       getCreatableDurationOptionsFromConfig(picklistConfig);
     const currentDuration = Number.parseInt(formData.Duration_Min, 10);
@@ -334,17 +319,16 @@ const FirstComponent = ({
     const selectedActivity = activityType.find(
       (item) => item.type === selectedType
     );
-    handleInputChange("Type_of_Activity", selectedType);
-    if (selectedActivity?.resource != null) {
-      handleInputChange("resource", selectedActivity.resource);
+    const selection = getActivityTypeSelection(
+      selectedType,
+      selectedActivity?.resource
+    );
+    handleInputChange("Type_of_Activity", selection.Type_of_Activity);
+    if (selection.resource != null) {
+      handleInputChange("resource", selection.resource);
     }
 
-    const regardingOptions = getRegardingOptions(
-      selectedType,
-      "",
-      picklistConfig
-    );
-    handleInputChange("Regarding", regardingOptions[0] || "");
+    handleInputChange("Regarding", selection.Regarding);
   };
 
   const handleClick = () => {

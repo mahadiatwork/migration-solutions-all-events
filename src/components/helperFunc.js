@@ -280,6 +280,16 @@ export const getResultBasedOnActivityType2 = (activityType, picklistConfig) => {
 };
 
 
+export const CUSTOM_REGARDING_LABEL = "Custom";
+export const CUSTOM_REGARDING_VALUE = "__custom_regarding__";
+
+export const filterReservedRegardingOptions = (options = []) =>
+  (Array.isArray(options) ? options : []).filter(
+    (option) =>
+      option !== CUSTOM_REGARDING_LABEL &&
+      option !== CUSTOM_REGARDING_VALUE
+  );
+
 export const getRegardingOptions = (
   type,
   existingValue,
@@ -302,7 +312,7 @@ export const getRegardingOptions = (
     ) {
       options.unshift(safeExistingValue);
     }
-    return options;
+    return filterReservedRegardingOptions(options);
   }
 
   const options = {
@@ -343,7 +353,7 @@ export const getRegardingOptions = (
     predefinedOptions = [existingValue, ...predefinedOptions];
   }
 
-  return predefinedOptions;
+  return filterReservedRegardingOptions(predefinedOptions);
 };
 
 

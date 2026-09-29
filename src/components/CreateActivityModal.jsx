@@ -23,8 +23,8 @@ import timezone from "dayjs/plugin/timezone";
 import useEventsStore from "../store/eventsStore";
 import {
   getCreatableDurationOptionsFromConfig,
-  getTypeOptionsFromConfig,
 } from "../services/picklistConfigService";
+import { getCreateActivityDefaults } from "./createActivityDefaults";
 dayjs.extend(utc);
 dayjs.extend(timezone);
 
@@ -326,7 +326,7 @@ const CreateActivityModal = ({
   const theme = useTheme();
   const [value, setValue] = useState(0);
 
-  const initialType = getTypeOptionsFromConfig(picklistConfig)[0] || "";
+  const createDefaults = getCreateActivityDefaults();
   const initialDuration =
     getCreatableDurationOptionsFromConfig(picklistConfig)[0] ?? "";
   const currentTimeInAdelaide = dayjs().format("YYYY-MM-DDTHH:mm:ssZ");
@@ -335,11 +335,11 @@ const CreateActivityModal = ({
     .format("YYYY-MM-DDTHH:mm:ssZ");
 
   const [formData, setFormData] = useState({
-    Type_of_Activity: initialType,
+    Type_of_Activity: createDefaults.Type_of_Activity,
     startTime: "",
     endTime: 60,
     What_Id: "",
-    Event_Title: initialType ? `New ${initialType}` : "New Activity",
+    Event_Title: createDefaults.Event_Title,
     resource: 1,
     scheduleFor: loggedInUser || "",
     scheduledWith: [],
@@ -351,7 +351,7 @@ const CreateActivityModal = ({
     noEndDate: false,
     Description: "",
     color: "#fff",
-    Regarding: "",
+    Regarding: createDefaults.Regarding,
     Duration_Min: initialDuration,
     Create_Separate_Event_For_Each_Contact: false,
     Reminder_Text: "15 minutes before",

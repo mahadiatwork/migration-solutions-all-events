@@ -7,7 +7,11 @@ import {
   TextField,
   Box,
 } from "@mui/material";
-import { getRegardingOptions } from "../helperFunc"; // Import the function
+import {
+  CUSTOM_REGARDING_LABEL,
+  CUSTOM_REGARDING_VALUE,
+  getRegardingOptions,
+} from "../helperFunc";
 
 const RegardingField = ({
   formData,
@@ -16,48 +20,46 @@ const RegardingField = ({
   preserveExistingValue = false,
 }) => {
   const existingValue = formData.Regarding;
-  const predefinedOptions = getRegardingOptions(
-    formData.Type_of_Activity,
-    existingValue,
-    picklistConfig,
-    preserveExistingValue
-  ); // Get dynamic options based on type
-  const configuredOptions = getRegardingOptions(
-    formData.Type_of_Activity,
-    "",
-    picklistConfig
+  const predefinedOptions = React.useMemo(
+    () =>
+      getRegardingOptions(
+        formData.Type_of_Activity,
+        existingValue,
+        picklistConfig,
+        preserveExistingValue
+      ),
+    [
+      existingValue,
+      formData.Type_of_Activity,
+      picklistConfig,
+      preserveExistingValue,
+    ]
   );
-  const configuredRegarding = picklistConfig?.regarding;
-  const hasConfiguredScope =
-    picklistConfig?._source === "custom_module" &&
-    configuredRegarding &&
-    typeof configuredRegarding === "object" &&
-    (Object.prototype.hasOwnProperty.call(
-      configuredRegarding,
-      formData.Type_of_Activity
-    ) ||
-      Object.prototype.hasOwnProperty.call(configuredRegarding, "_default"));
-  const allowManualOther =
-    !hasConfiguredScope || configuredOptions.includes("Other");
+  const selectableOptions = React.useMemo(
+    () =>
+      predefinedOptions.filter((option) => option !== CUSTOM_REGARDING_VALUE),
+    [predefinedOptions]
+  );
 
   const [selectedValue, setSelectedValue] = useState(existingValue);
   const [manualInput, setManualInput] = useState("");
+  const previousActivityType = React.useRef(formData.Type_of_Activity);
 
   useEffect(() => {
-    // Keep the manual editor open while clearing or replacing the prior value.
-    if (allowManualOther && selectedValue === "Other" && existingValue === "") {
+    const activityTypeChanged =
+      previousActivityType.current !== formData.Type_of_Activity;
+    previousActivityType.current = formData.Type_of_Activity;
+
+    // Values entered in edit mode are deliberately preserved as options. Keep
+    // an actively selected Custom editor open as its controlled value changes.
+    if (selectedValue === CUSTOM_REGARDING_VALUE && !activityTypeChanged) {
       return;
     }
 
-    // If existingValue is not in the predefined options, set it to "Other" and show manual input
-    if (
-      allowManualOther &&
-      existingValue &&
-      !predefinedOptions.includes(existingValue)
-    ) {
-      setSelectedValue("Other");
+    if (existingValue && !selectableOptions.includes(existingValue)) {
+      setSelectedValue(CUSTOM_REGARDING_VALUE);
       setManualInput(existingValue);
-    } else if (predefinedOptions.includes(existingValue)) {
+    } else if (selectableOptions.includes(existingValue)) {
       setSelectedValue(existingValue);
       setManualInput("");
     } else {
@@ -65,11 +67,9 @@ const RegardingField = ({
       setManualInput("");
     }
   }, [
-    allowManualOther,
     existingValue,
     formData.Type_of_Activity,
-    picklistConfig,
-    preserveExistingValue,
+    selectableOptions,
     selectedValue,
   ]);
 
@@ -77,11 +77,11 @@ const RegardingField = ({
     const value = event.target.value;
     setSelectedValue(value);
 
-    if (value !== "Other" || !allowManualOther) {
+    if (value !== CUSTOM_REGARDING_VALUE) {
       setManualInput(""); // Clear manual input when a predefined option is selected
       handleInputChange("Regarding", value);
     } else {
-      setManualInput(""); // Reset manual input when "Other" is selected
+      setManualInput("");
       handleInputChange("Regarding", "");
     }
   };
@@ -106,22 +106,20 @@ const RegardingField = ({
           label="Regarding"
           sx={{ fontSize: "9pt" }}
         >
-          {predefinedOptions.map((option) => (
+          {selectableOptions.map((option) => (
             <MenuItem key={option} value={option} sx={{ fontSize: "9pt" }}>
               {option}
             </MenuItem>
           ))}
-          {allowManualOther && !predefinedOptions.includes("Other") && (
-            <MenuItem value="Other" sx={{ fontSize: "9pt" }}>
-              Other (Manually enter)
-            </MenuItem>
-          )}
+          <MenuItem value={CUSTOM_REGARDING_VALUE} sx={{ fontSize: "9pt" }}>
+            {CUSTOM_REGARDING_LABEL}
+          </MenuItem>
         </Select>
       </FormControl>
 
-      {allowManualOther && selectedValue === "Other" && (
+      {selectedValue === CUSTOM_REGARDING_VALUE && (
         <TextField
-          label="Enter your custom regarding"
+          label="Custom Regarding"
           fullWidth
           size="small"
           value={manualInput}

@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  CUSTOM_REGARDING_LABEL,
+  CUSTOM_REGARDING_VALUE,
   activityResultMapping,
   getActivityTimezone,
   getRegardingOptions,
@@ -160,6 +162,28 @@ describe("activity mappings", () => {
       )
     ).toHaveLength(1);
     expect(getRegardingOptions("Unknown", "")).toEqual(["General"]);
+  });
+
+  it("reserves Custom for manual entry without removing configured Other", () => {
+    const config = {
+      _source: "custom_module",
+      regarding: {
+        Meeting: [
+          CUSTOM_REGARDING_LABEL,
+          CUSTOM_REGARDING_VALUE,
+          "Other",
+          "Follow up",
+        ],
+      },
+    };
+
+    expect(getRegardingOptions("Meeting", "", config)).toEqual([
+      "Other",
+      "Follow up",
+    ]);
+    expect(
+      getRegardingOptions("Meeting", CUSTOM_REGARDING_LABEL, config, true)
+    ).toEqual(["Other", "Follow up"]);
   });
 
   it("does not fall back when custom-module parent options are empty", () => {
