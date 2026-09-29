@@ -291,10 +291,7 @@ export const getRegardingOptions = (
     type
   );
 
-  if (
-    configuredOptions !== undefined ||
-    picklistConfig?._source === "custom_module"
-  ) {
+  if (configuredOptions !== undefined) {
     const options = [...(configuredOptions || [])];
     const safeExistingValue =
       typeof existingValue === "string" ? existingValue : "";

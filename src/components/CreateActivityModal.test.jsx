@@ -209,6 +209,41 @@ describe("CreateActivityModal controller", () => {
     expect(props.handleClose).toHaveBeenCalledOnce();
   });
 
+  it("uses the first positive configured duration for a new event", async () => {
+    const insertRecord = vi.fn(async ({ Entity }) =>
+      Entity === "Events"
+        ? { data: [{ code: "SUCCESS", details: { id: "event-1" } }] }
+        : { data: [{ code: "SUCCESS", details: { id: "log-1" } }] }
+    );
+    renderModal(
+      { CRM: { API: { insertRecord } } },
+      {
+        picklistConfig: {
+          _source: "custom_module",
+          types: ["Communication & Meetings"],
+          regarding: {},
+          durations: [0, 5, 10],
+        },
+      }
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Fill ordinary activity" }));
+    const submit = screen.getByRole("button", { name: "Ok" });
+    expect(submit).toBeEnabled();
+
+    await act(async () => {
+      fireEvent.click(submit);
+    });
+
+    const eventCall = insertRecord.mock.calls.find(
+      ([request]) => request.Entity === "Events"
+    )[0];
+    expect(eventCall.APIData.Duration_Min).toBe("5");
+    expect(new Date(eventCall.APIData.End_DateTime).getTime()).toBeGreaterThan(
+      new Date(eventCall.APIData.Start_DateTime).getTime()
+    );
+  });
+
   it("shows an error and leaves state unchanged when ordinary create rejects", async () => {
     const insertRecord = vi.fn(async ({ Entity }) => {
       if (Entity === "Events") throw new Error("Zoho unavailable");

@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   clearPicklistConfigCache,
   fetchPicklistConfig,
+  getCreatableDurationOptionsFromConfig,
   getDurationOptionsFromConfig,
   getRegardingOptionsFromConfig,
   getResultOptionsFromConfig,
@@ -577,5 +578,15 @@ describe("picklistConfigService", () => {
         results: {},
       })
     ).toEqual([]);
+  });
+
+  it("excludes zero only from new-event duration choices", () => {
+    const config = {
+      durations: [0, 5, 10],
+      _source: "custom_module",
+    };
+
+    expect(getDurationOptionsFromConfig(config)).toEqual([0, 5, 10]);
+    expect(getCreatableDurationOptionsFromConfig(config)).toEqual([5, 10]);
   });
 });

@@ -22,7 +22,7 @@ import utc from "dayjs/plugin/utc";
 import timezone from "dayjs/plugin/timezone";
 import useEventsStore from "../store/eventsStore";
 import {
-  getDurationOptionsFromConfig,
+  getCreatableDurationOptionsFromConfig,
   getTypeOptionsFromConfig,
 } from "../services/picklistConfigService";
 dayjs.extend(utc);
@@ -327,7 +327,8 @@ const CreateActivityModal = ({
   const [value, setValue] = useState(0);
 
   const initialType = getTypeOptionsFromConfig(picklistConfig)[0] || "";
-  const initialDuration = getDurationOptionsFromConfig(picklistConfig)[0] ?? "";
+  const initialDuration =
+    getCreatableDurationOptionsFromConfig(picklistConfig)[0] ?? "";
   const currentTimeInAdelaide = dayjs().format("YYYY-MM-DDTHH:mm:ssZ");
   const initialEndTimeInAdelaide = dayjs()
     .add(Number.isFinite(initialDuration) ? initialDuration : 0, "minute")
@@ -371,7 +372,8 @@ const CreateActivityModal = ({
       scheduledWith, // scheduledWith instead of Participants
     } = formData;
 
-    const configuredDurations = getDurationOptionsFromConfig(picklistConfig);
+    const configuredDurations =
+      getCreatableDurationOptionsFromConfig(picklistConfig);
     const durationIsConfigured =
       Duration_Min !== "" &&
       Duration_Min != null &&
@@ -379,12 +381,18 @@ const CreateActivityModal = ({
         (option) => Number(option) === Number(Duration_Min)
       );
 
+    const startDate = dayjs(start);
+    const endDate = dayjs(end);
+    const hasValidTimeRange =
+      startDate.isValid() && endDate.isValid() && endDate.isAfter(startDate);
+
     // Ensure all required fields are not empty or null. A successful custom
     // module read with no Duration rows intentionally makes creation invalid.
     return (
       Type_of_Activity &&
       start &&
       end &&
+      hasValidTimeRange &&
       durationIsConfigured &&
       Event_Title &&
       scheduledWith.length > 0

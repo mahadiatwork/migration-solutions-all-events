@@ -549,6 +549,13 @@ export const getDurationOptionsFromConfig = (config) =>
       ? config.durations
       : DEFAULT_DURATION_OPTIONS;
 
+// Zoho Events require End_DateTime to be later than Start_DateTime. Keep zero
+// available to history/edit flows, but never offer it for a newly created event.
+export const getCreatableDurationOptionsFromConfig = (config) =>
+  getDurationOptionsFromConfig(config).filter(
+    (minutes) => Number.isFinite(minutes) && minutes > 0
+  );
+
 export const getResultMappingFromConfig = (config) =>
   config?._source === "custom_module"
     ? config?.resultMapping || {}

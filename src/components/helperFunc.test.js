@@ -186,6 +186,19 @@ describe("activity mappings", () => {
     ]);
   });
 
+  it("falls back when a custom-module type has no Regarding scope", () => {
+    const config = {
+      _source: "custom_module",
+      regarding: {
+        Meeting: ["Follow up"],
+      },
+    };
+
+    expect(
+      getRegardingOptions("Communication & Meetings", "", config)
+    ).toEqual(["General"]);
+  });
+
   it("keeps CRM reminder minute values stable", () => {
     expect(reminderMapping).toEqual({
       "120 minutes before": 120,

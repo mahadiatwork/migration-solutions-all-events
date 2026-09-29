@@ -27,6 +27,7 @@ import dayjs from "dayjs";
 import { getRegardingOptions, reminderMapping } from "./helperFunc";
 import {
   DEFAULT_ACTIVITY_TYPES,
+  getCreatableDurationOptionsFromConfig,
   getDurationOptionsFromConfig,
   getTypeOptionsFromConfig,
 } from "../services/picklistConfigService";
@@ -208,7 +209,8 @@ const FirstComponent = ({
       handleInputChange("Regarding", regardingOptions[0] || "");
     }
 
-    const configuredDurations = getDurationOptionsFromConfig(picklistConfig);
+    const configuredDurations =
+      getCreatableDurationOptionsFromConfig(picklistConfig);
     const currentDuration = Number.parseInt(formData.Duration_Min, 10);
     const nextDuration = configuredDurations.includes(currentDuration)
       ? currentDuration
@@ -436,7 +438,9 @@ const FirstComponent = ({
     },
   };
 
-  const configuredDurations = getDurationOptionsFromConfig(picklistConfig);
+  const configuredDurations = isEditMode
+    ? getDurationOptionsFromConfig(picklistConfig)
+    : getCreatableDurationOptionsFromConfig(picklistConfig);
   const parsedDuration = Number.parseInt(formData.Duration_Min, 10);
   const selectedDuration = Number.isFinite(parsedDuration)
     ? parsedDuration

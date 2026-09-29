@@ -27,14 +27,28 @@ const RegardingField = ({
     "",
     picklistConfig
   );
+  const configuredRegarding = picklistConfig?.regarding;
+  const hasConfiguredScope =
+    picklistConfig?._source === "custom_module" &&
+    configuredRegarding &&
+    typeof configuredRegarding === "object" &&
+    (Object.prototype.hasOwnProperty.call(
+      configuredRegarding,
+      formData.Type_of_Activity
+    ) ||
+      Object.prototype.hasOwnProperty.call(configuredRegarding, "_default"));
   const allowManualOther =
-    picklistConfig?._source !== "custom_module" ||
-    configuredOptions.includes("Other");
+    !hasConfiguredScope || configuredOptions.includes("Other");
 
   const [selectedValue, setSelectedValue] = useState(existingValue);
   const [manualInput, setManualInput] = useState("");
 
   useEffect(() => {
+    // Keep the manual editor open while clearing or replacing the prior value.
+    if (allowManualOther && selectedValue === "Other" && existingValue === "") {
+      return;
+    }
+
     // If existingValue is not in the predefined options, set it to "Other" and show manual input
     if (
       allowManualOther &&
@@ -56,6 +70,7 @@ const RegardingField = ({
     formData.Type_of_Activity,
     picklistConfig,
     preserveExistingValue,
+    selectedValue,
   ]);
 
   const handleSelectChange = (event) => {
@@ -67,18 +82,15 @@ const RegardingField = ({
       handleInputChange("Regarding", value);
     } else {
       setManualInput(""); // Reset manual input when "Other" is selected
+      handleInputChange("Regarding", "");
     }
   };
 
   const handleManualInputChange = (event) => {
     const value = event.target.value;
     setManualInput(value);
-    
+    handleInputChange("Regarding", value);
   };
-
-  const handleBlur = () => {
-    handleInputChange("Regarding", manualInput);
-  }
 
   return (
     <Box sx={{ width: "100%" }}>
@@ -114,7 +126,6 @@ const RegardingField = ({
           size="small"
           value={manualInput}
           onChange={handleManualInputChange}
-          onBlur={handleBlur}
           sx={{
             mt: 2,
             fontSize: "9pt",
