@@ -19,39 +19,19 @@ import ThirdComponent from "./ThirdComponent";
 import CloseIcon from "@mui/icons-material/Close";
 import dayjs from "dayjs";
 import useEventsStore from "../store/eventsStore";
-
-// Helper function to format date with timezone offset
-function formatDateForRemindAt(date) {
-  if (!date) return null;
-
-  // Helper function to pad numbers with leading zeros
-  const pad = (num) => String(num).padStart(2, "0");
-
-  // Extract date and time components
-  const formattedYear = date.getFullYear();
-  const formattedMonth = pad(date.getMonth() + 1);
-  const formattedDay = pad(date.getDate());
-  const formattedHours = pad(date.getHours());
-  const formattedMinutes = pad(date.getMinutes());
-  const formattedSeconds = pad(date.getSeconds());
-
-  // Get timezone offset
-  const timezoneOffset = -date.getTimezoneOffset();
-  const offsetSign = timezoneOffset >= 0 ? "+" : "-";
-  const offsetHours = pad(Math.floor(Math.abs(timezoneOffset) / 60));
-  const offsetMinutes = pad(Math.abs(timezoneOffset) % 60);
-
-  // Return formatted date string with timezone offset
-  return `${formattedYear}-${formattedMonth}-${formattedDay}T${formattedHours}:${formattedMinutes}:${formattedSeconds}${offsetSign}${offsetHours}:${offsetMinutes}`;
-}
+import {
+  formatDateTimeForCrm,
+  parseCrmDateTime,
+} from "./helperFunc";
 
 // Function to calculate Remind_At based on Reminder_Text
 function calculateRemindAt(reminderText, startDateTime) {
-  const startDate = new Date(startDateTime);
+  const startDate = parseCrmDateTime(startDateTime)?.toDate();
+  if (!startDate) return null;
   // Calculate the amount of time to subtract based on Reminder_Text
   switch (reminderText) {
     case "At time of meeting":
-      return startDate.toISOString(); // No change
+      break;
     case "5 minutes before":
       startDate.setMinutes(startDate.getMinutes() - 5);
       break;
@@ -78,32 +58,7 @@ function calculateRemindAt(reminderText, startDateTime) {
       return null; // No reminder
   }
   // Format the updated date back into the required ISO string format
-  return formatDateForRemindAt(startDate);
-}
-
-function formatDateWithOffset(dateString) {
-  if (!dateString) return null;
-  const date = new Date(dateString);
-  if (isNaN(date.getTime())) return null;
-
-  // Pad numbers with leading zeros
-  const pad = (num) => String(num).padStart(2, "0");
-
-  const year = date.getFullYear();
-  const month = pad(date.getMonth() + 1);
-  const day = pad(date.getDate());
-  const hours = pad(date.getHours());
-  const minutes = pad(date.getMinutes());
-  const seconds = pad(date.getSeconds());
-
-  // Calculate timezone offset
-  const timezoneOffset = -date.getTimezoneOffset();
-  const offsetSign = timezoneOffset >= 0 ? "+" : "-";
-  const offsetHours = pad(Math.floor(Math.abs(timezoneOffset) / 60));
-  const offsetMinutes = pad(Math.abs(timezoneOffset) % 60);
-
-  // Return formatted date string with timezone offset
-  return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}${offsetSign}${offsetHours}:${offsetMinutes}`;
+  return formatDateTimeForCrm(startDate);
 }
 
 export function buildEditActivityPayload(data) {
@@ -126,8 +81,8 @@ export function buildEditActivityPayload(data) {
   const hasDuration = data.Duration_Min !== "" && data.Duration_Min != null;
   let transformedData = {
     ...data,
-    Start_DateTime: formatDateWithOffset(data.start), // Format `start` to ISO with timezone
-    End_DateTime: formatDateWithOffset(data.end), // Format `end` to ISO with timezone
+    Start_DateTime: formatDateTimeForCrm(data.start),
+    End_DateTime: formatDateTimeForCrm(data.end),
     Description: data.Description, // Map `description` to `Description`
     Event_Priority: data.priority, // Map `priority` to `Event_Priority`
 
@@ -150,7 +105,7 @@ export function buildEditActivityPayload(data) {
   ) {
     const remindAt = calculateRemindAt(
       data?.Reminder_Text,
-      formatDateWithOffset(data.start)
+      formatDateTimeForCrm(data.start)
     );
     transformedData["Remind_At"] = remindAt;
     delete transformedData.User_Reminder;

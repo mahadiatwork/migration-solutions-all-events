@@ -7,36 +7,60 @@ dayjs.extend(utc);
 dayjs.extend(timezone);
 dayjs.extend(customParseFormat);
 
-const FALLBACK_ACTIVITY_TIMEZONE = "Australia/Sydney";
+const FALLBACK_ACTIVITY_TIMEZONE = "UTC";
 
-export const getActivityTimezone = () =>
+export const getDeviceTimezone = () =>
   Intl.DateTimeFormat().resolvedOptions().timeZone ||
   FALLBACK_ACTIVITY_TIMEZONE;
 
-// Use the timezone configured on the current user's device so each Australian
-// region gets its own calendar boundaries and daylight-saving rules.
-export const ACTIVITY_TIMEZONE = getActivityTimezone();
+export const getActivityTimezone = getDeviceTimezone;
 
-const hasExplicitTimezone = (value) =>
-  typeof value === "string" && /(?:Z|[+-]\d{2}:?\d{2})$/i.test(value);
+// The device timezone is stable for the lifetime of an embedded widget load.
+export const ACTIVITY_TIMEZONE = getDeviceTimezone();
+
+export const hasExplicitTimezone = (value) =>
+  typeof value === "string" &&
+  /(?:Z|[+-]\d{2}:?\d{2})$/i.test(value.trim());
 
 // CRM values without an offset are already expressed in the activity timezone.
 // Values with an offset represent an instant and must be converted for display.
-export const parseActivityDateTime = (value) => {
+export const parseCrmDateTime = (
+  value,
+  timeZone = getDeviceTimezone()
+) => {
   if (!value) return null;
 
   const source = dayjs(value);
   if (!source.isValid()) return null;
 
-  const parsed = hasExplicitTimezone(value)
-    ? source.tz(ACTIVITY_TIMEZONE)
-    : dayjs.tz(value, ACTIVITY_TIMEZONE);
+  let parsed;
+  try {
+    parsed =
+      typeof value === "string" && !hasExplicitTimezone(value)
+        ? dayjs.tz(value, timeZone)
+        : source.tz(timeZone);
+  } catch {
+    return null;
+  }
 
-  return parsed.isValid() ? parsed : null;
+  return parsed?.isValid() ? parsed : null;
+};
+
+export const parseActivityDateTime = parseCrmDateTime;
+
+export const formatDateTimeForCrm = (
+  value,
+  timeZone = getDeviceTimezone()
+) => {
+  const parsed = parseCrmDateTime(value, timeZone);
+  return parsed ? parsed.format("YYYY-MM-DDTHH:mm:ssZ") : null;
 };
 
 // --- Helper: Parse date from known formats ---
-export const safeParseDateString = (dateString) => {
+export const safeParseDateString = (
+  dateString,
+  timeZone = getDeviceTimezone()
+) => {
   if (!dateString || dateString === "NaN/NaN/NaN" || dateString === "") {
     return null;
   }
@@ -51,7 +75,7 @@ export const safeParseDateString = (dateString) => {
       `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`,
       "YYYY-MM-DD",
       true
-    ).tz(ACTIVITY_TIMEZONE, true);
+    ).tz(timeZone, true);
     if (parsed.isValid()) return parsed.startOf("day");
     return null;
   }
@@ -62,13 +86,13 @@ export const safeParseDateString = (dateString) => {
       `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`,
       "YYYY-MM-DD",
       true
-    ).tz(ACTIVITY_TIMEZONE, true);
+    ).tz(timeZone, true);
     if (parsed.isValid()) return parsed.startOf("day");
     return null;
   }
 
   // Fallback to default Day.js parsing
-  const fallback = parseActivityDateTime(dateString);
+  const fallback = parseActivityDateTime(dateString, timeZone);
   if (fallback) return fallback.startOf("day");
 
   console.warn(`❌ Failed to parse date: "${dateString}"`);
@@ -76,15 +100,19 @@ export const safeParseDateString = (dateString) => {
 };
 
 // --- Main Range Filter Function ---
-export const isDateInRange = (date, rangeType) => {
-  const parsedDate = safeParseDateString(date);
+export const isDateInRange = (
+  date,
+  rangeType,
+  timeZone = getDeviceTimezone()
+) => {
+  const parsedDate = safeParseDateString(date, timeZone);
   if (!parsedDate) {
     console.warn(`⚠️ Invalid date for filtering: "${date}"`);
     return false;
   }
 
   const targetDate = parsedDate.valueOf();
-  const today = dayjs().tz(ACTIVITY_TIMEZONE).startOf("day");
+  const today = dayjs().tz(timeZone).startOf("day");
 
   let startDate, endDate;
 
@@ -121,7 +149,7 @@ export const isDateInRange = (date, rangeType) => {
     case "Next Week":
       startDate = today.add(7 - today.day(), "day").startOf("day").valueOf();
       endDate = dayjs(startDate)
-        .tz(ACTIVITY_TIMEZONE)
+        .tz(timeZone)
         .add(6, "day")
         .endOf("day")
         .valueOf();

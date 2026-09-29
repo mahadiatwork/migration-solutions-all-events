@@ -3,11 +3,14 @@ import {
   CUSTOM_REGARDING_LABEL,
   CUSTOM_REGARDING_VALUE,
   activityResultMapping,
+  formatDateTimeForCrm,
   getActivityTimezone,
+  getDeviceTimezone,
   getRegardingOptions,
   getResultBasedOnActivityType,
   getResultBasedOnActivityType2,
   isDateInRange,
+  parseCrmDateTime,
   reminderMapping,
   safeParseDateString,
 } from "./helperFunc";
@@ -46,11 +49,11 @@ describe("date range helpers", () => {
   });
 
   it("uses the user's local calendar day for Today", () => {
-    // 23:30 UTC is already the following morning in an Australian timezone.
+    // 23:30 UTC is already the following morning on a Shanghai device.
     vi.setSystemTime(new Date("2026-09-02T23:30:00Z"));
 
-    expect(isDateInRange("03/09/2026", "Today")).toBe(true);
-    expect(isDateInRange("02/09/2026", "Today")).toBe(false);
+    expect(isDateInRange("03/09/2026", "Today", "Asia/Shanghai")).toBe(true);
+    expect(isDateInRange("02/09/2026", "Today", "Asia/Shanghai")).toBe(false);
   });
 
   it("reads the timezone configured on the current device", () => {
@@ -59,6 +62,7 @@ describe("date range helpers", () => {
     });
 
     expect(getActivityTimezone()).toBe("Australia/Brisbane");
+    expect(getDeviceTimezone()).toBe("Australia/Brisbane");
 
     dateTimeFormat.mockRestore();
   });
@@ -88,6 +92,53 @@ describe("date range helpers", () => {
     expect(safeParseDateString("29/02/2024")?.format("YYYY-MM-DD")).toBe(
       "2024-02-29"
     );
+  });
+
+  it("converts offset-bearing CRM datetimes as instants in each device zone", () => {
+    const source = "2026-01-15T09:00:00+11:00";
+    const expectedEpoch = new Date(source).getTime();
+
+    for (const zone of [
+      "Asia/Shanghai",
+      "Australia/Adelaide",
+      "America/Los_Angeles",
+    ]) {
+      expect(parseCrmDateTime(source, zone)?.valueOf()).toBe(expectedEpoch);
+    }
+
+    expect(formatDateTimeForCrm(source, "Asia/Shanghai")).toBe(
+      "2026-01-15T06:00:00+08:00"
+    );
+    expect(formatDateTimeForCrm(source, "America/Los_Angeles")).toBe(
+      "2026-01-14T14:00:00-08:00"
+    );
+  });
+
+  it("preserves legacy wall time and applies DST for the selected date", () => {
+    expect(
+      formatDateTimeForCrm(
+        "2026-01-15T09:00:00",
+        "Australia/Adelaide"
+      )
+    ).toBe("2026-01-15T09:00:00+10:30");
+    expect(
+      formatDateTimeForCrm(
+        "2026-07-15T09:00:00",
+        "Australia/Adelaide"
+      )
+    ).toBe("2026-07-15T09:00:00+09:30");
+    expect(
+      formatDateTimeForCrm(
+        "2026-01-15T09:00:00",
+        "America/Los_Angeles"
+      )
+    ).toBe("2026-01-15T09:00:00-08:00");
+    expect(
+      formatDateTimeForCrm(
+        "2026-07-15T09:00:00",
+        "America/Los_Angeles"
+      )
+    ).toBe("2026-07-15T09:00:00-07:00");
   });
 });
 

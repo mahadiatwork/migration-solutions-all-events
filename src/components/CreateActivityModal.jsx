@@ -25,37 +25,17 @@ import {
   getCreatableDurationOptionsFromConfig,
 } from "../services/picklistConfigService";
 import { getCreateActivityDefaults } from "./createActivityDefaults";
+import {
+  formatDateTimeForCrm,
+  parseCrmDateTime,
+} from "./helperFunc";
 dayjs.extend(utc);
 dayjs.extend(timezone);
 
-// Helper function to format date with timezone offset
-function formatDateForRemindAt(date) {
-  if (!date) return null;
-
-  // Helper function to pad numbers with leading zeros
-  const pad = (num) => String(num).padStart(2, "0");
-
-  // Extract date and time components
-  const formattedYear = date.getFullYear();
-  const formattedMonth = pad(date.getMonth() + 1);
-  const formattedDay = pad(date.getDate());
-  const formattedHours = pad(date.getHours());
-  const formattedMinutes = pad(date.getMinutes());
-  const formattedSeconds = pad(date.getSeconds());
-
-  // Get timezone offset
-  const timezoneOffset = -date.getTimezoneOffset();
-  const offsetSign = timezoneOffset >= 0 ? "+" : "-";
-  const offsetHours = pad(Math.floor(Math.abs(timezoneOffset) / 60));
-  const offsetMinutes = pad(Math.abs(timezoneOffset) % 60);
-
-  // Return formatted date string with timezone offset
-  return `${formattedYear}-${formattedMonth}-${formattedDay}T${formattedHours}:${formattedMinutes}:${formattedSeconds}${offsetSign}${offsetHours}:${offsetMinutes}`;
-}
-
 // Function to calculate Remind_At based on Reminder_Text
 function calculateRemindAt(reminderText, startDateTime) {
-  const startDate = new Date(startDateTime);
+  const startDate = parseCrmDateTime(startDateTime)?.toDate();
+  if (!startDate) return null;
   // Calculate the amount of time to subtract based on Reminder_Text
   switch (reminderText) {
     case "At time of meeting":
@@ -87,35 +67,7 @@ function calculateRemindAt(reminderText, startDateTime) {
       return null; // No reminder
   }
   // Format the updated date back into the required ISO string format
-  return formatDateForRemindAt(startDate);
-}
-
-function formatDateWithOffset(dateString) {
-  if (!dateString) return null;
-
-  // Parse the date string using JavaScript's Date constructor
-  const date = new Date(dateString);
-  if (isNaN(date.getTime())) return null;
-
-  // Helper function to pad numbers with leading zeros
-  const pad = (num) => String(num).padStart(2, "0");
-
-  // Extract date and time components
-  const formattedYear = date.getFullYear();
-  const formattedMonth = pad(date.getMonth() + 1);
-  const formattedDay = pad(date.getDate());
-  const formattedHours = pad(date.getHours());
-  const formattedMinutes = pad(date.getMinutes());
-  const formattedSeconds = pad(date.getSeconds());
-
-  // Get timezone offset
-  const timezoneOffset = -date.getTimezoneOffset();
-  const offsetSign = timezoneOffset >= 0 ? "+" : "-";
-  const offsetHours = pad(Math.floor(Math.abs(timezoneOffset) / 60));
-  const offsetMinutes = pad(Math.abs(timezoneOffset) % 60);
-
-  // Return formatted date string with timezone offset
-  return `${formattedYear}-${formattedMonth}-${formattedDay}T${formattedHours}:${formattedMinutes}:${formattedSeconds}${offsetSign}${offsetHours}:${offsetMinutes}`;
+  return formatDateTimeForCrm(startDate);
 }
 
 export function buildCreateActivityPayload(data, individualParticipant = null) {
@@ -159,8 +111,8 @@ export function buildCreateActivityPayload(data, individualParticipant = null) {
   const hasDuration = data.Duration_Min !== "" && data.Duration_Min != null;
   let transformedData = {
     ...data,
-    Start_DateTime: formatDateWithOffset(data.start),
-    End_DateTime: formatDateWithOffset(data.end),
+    Start_DateTime: formatDateTimeForCrm(data.start),
+    End_DateTime: formatDateTimeForCrm(data.end),
     Description: data.Description || "",
     Event_Priority: data.priority || "",
 
@@ -206,7 +158,7 @@ export function buildCreateActivityPayload(data, individualParticipant = null) {
   ) {
     const remindAt = calculateRemindAt(
       data?.Reminder_Text,
-      formatDateWithOffset(data.start)
+      formatDateTimeForCrm(data.start)
     );
     transformedData["Remind_At"] = remindAt;
     delete transformedData.User_Reminder;
@@ -329,8 +281,8 @@ const CreateActivityModal = ({
   const createDefaults = getCreateActivityDefaults();
   const initialDuration =
     getCreatableDurationOptionsFromConfig(picklistConfig)[0] ?? "";
-  const currentTimeInAdelaide = dayjs().format("YYYY-MM-DDTHH:mm:ssZ");
-  const initialEndTimeInAdelaide = dayjs()
+  const currentDeviceTime = dayjs().format("YYYY-MM-DDTHH:mm:ssZ");
+  const initialEndDeviceTime = dayjs()
     .add(Number.isFinite(initialDuration) ? initialDuration : 0, "minute")
     .format("YYYY-MM-DDTHH:mm:ssZ");
 
@@ -346,8 +298,8 @@ const CreateActivityModal = ({
     Venue: "",
     priority: "Medium",
     repeat: "once",
-    start: currentTimeInAdelaide || "",
-    end: initialEndTimeInAdelaide || "",
+    start: currentDeviceTime || "",
+    end: initialEndDeviceTime || "",
     noEndDate: false,
     Description: "",
     color: "#fff",

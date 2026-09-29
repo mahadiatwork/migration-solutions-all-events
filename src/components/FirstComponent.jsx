@@ -24,7 +24,7 @@ import { DateTimePicker, LocalizationProvider } from "@mui/x-date-pickers";
 import { DesktopDateTimePicker } from '@mui/x-date-pickers/DesktopDateTimePicker';
 import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
 import dayjs from "dayjs";
-import { reminderMapping } from "./helperFunc";
+import { getDeviceTimezone, reminderMapping } from "./helperFunc";
 import {
   DEFAULT_ACTIVITY_TYPES,
   getCreatableDurationOptionsFromConfig,
@@ -123,6 +123,7 @@ const FirstComponent = ({
   isEditMode, // New prop to check if it's edit mode
   picklistConfig,
 }) => {
+  const deviceTimezone = getDeviceTimezone();
   const { events, filterDate, setFilterDate, recentColors, setRecentColor } =
     useContext(ZohoContext);
 
@@ -575,8 +576,14 @@ const FirstComponent = ({
             <DesktopDateTimePicker
               label="Start Time"
               value={startValue}
+              timezone="system"
               disabled={formData.Banner ? true : false}
-              slotProps={{ textField: { size: "small" } }}
+              slotProps={{
+                textField: {
+                  size: "small",
+                  helperText: `Timezone: ${deviceTimezone}`,
+                },
+              }}
               onChange={(e) => {
                 const nextDuration =
                   isEditMode && Number.isFinite(selectedDuration)
@@ -607,8 +614,14 @@ const FirstComponent = ({
             <DesktopDateTimePicker
               label="End Time"
               value={endValue}
+              timezone="system"
               disabled={formData.Banner ? true : false}
-              slotProps={{ textField: { size: "small" } }}
+              slotProps={{
+                textField: {
+                  size: "small",
+                  helperText: `Timezone: ${deviceTimezone}`,
+                },
+              }}
               onChange={(e) => handleEndDateChange(e)}
               sx={{ "& input": { py: 0 } }}
               renderInput={(params) => <TextField {...params} size="small" />}
