@@ -405,8 +405,16 @@ const normalizeCategory = (value) => {
 };
 
 const sortRank = (value) => {
-  const rank = Number(fieldValue(value));
-  return Number.isFinite(rank) ? rank : 9999;
+  const rawValue = value && typeof value === "object"
+    ? value.actual_value ?? value.display_value ?? value.name ?? value.Name
+    : value;
+  // Missing ranks belong after every configured priority; zero is valid.
+  if (
+    (typeof rawValue !== "string" && typeof rawValue !== "number") ||
+    (typeof rawValue === "string" && rawValue.trim() === "")
+  ) return Infinity;
+  const rank = Number(rawValue);
+  return Number.isFinite(rank) ? rank : Infinity;
 };
 
 export const groupPicklistConfigRecords = (records) => {

@@ -68,6 +68,41 @@ describe("picklistConfigService", () => {
     });
   });
 
+  it.each([
+    ["History Type", (config) => getTypeOptionsFromConfig(config)],
+    ["History Result", (config) => getResultOptionsFromConfig("Fruit", config)],
+    ["Regarding", (config) => getRegardingOptionsFromConfig("Fruit", config)],
+    ["Duration", (config) => getDurationOptionsFromConfig(config)],
+  ])("keeps numeric priority order and puts unranked %s values last", (category, getOptions) => {
+    const rows = [
+      { Name: "90", Sort_Order: null },
+      { Name: "80", Sort_Order: "" },
+      { Name: "70", Sort_Order: "   " },
+      { Name: "60", Sort_Order: "invalid" },
+      { Name: "50" },
+      { Name: "40", Sort_Order: 10000 },
+      { Name: "30", Sort_Order: "10" },
+      { Name: "20", Sort_Order: { actual_value: "9" } },
+      { Name: "10", Sort_Order: { display_value: 0 } },
+    ].map((row) => ({ ...row, Category: category, Parent_Type: "Fruit" }));
+
+    const config = groupPicklistConfigRecords(rows);
+    const expected = ["10", "20", "30", "40", "90", "80", "70", "60", "50"];
+    expect(getOptions(config)).toEqual(
+      category === "Duration" ? expected.map(Number) : expected
+    );
+  });
+
+  it("uses Sort_Order as a numeric priority, not a one-based position", () => {
+    const config = groupPicklistConfigRecords([
+      { Name: "Meeting", Category: "Type", Sort_Order: 10 },
+      { Name: "Fruit", Category: "Type", Sort_Order: "9" },
+      { Name: "Other", Category: "Type", Sort_Order: 5 },
+    ]);
+
+    expect(getTypeOptionsFromConfig(config)).toEqual(["Other", "Fruit", "Meeting"]);
+  });
+
   it("loads active records through the SDK and caches only that success", async () => {
     const getAllRecords = vi.fn().mockResolvedValue({
       data: [
