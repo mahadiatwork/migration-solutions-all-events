@@ -40,6 +40,7 @@ const zoho = {
     API: {
       getRecord: vi.fn(),
       getOrgVariable: vi.fn(),
+      getAllUsers: vi.fn(),
       getAllRecords: vi.fn(),
       searchRecord: vi.fn(),
     },
@@ -70,6 +71,13 @@ describe("App Zoho integration", () => {
     zoho.CRM.API.getOrgVariable.mockResolvedValue({
       Success: { Content: '["#123456"]' },
     });
+    zoho.CRM.API.getAllUsers.mockResolvedValue({
+      users: [
+        { id: "u1", full_name: "Ada Lovelace" },
+        { id: "u2", full_name: "Grace Hopper" },
+      ],
+      info: { more_records: false },
+    });
     zoho.CRM.API.getAllRecords.mockImplementation(({ Entity }) => {
       if (Entity === "Widget_Picklist_Config") {
         return Promise.resolve({
@@ -85,12 +93,7 @@ describe("App Zoho integration", () => {
         });
       }
 
-      return Promise.resolve({
-        users: [
-          { id: "u1", full_name: "Ada Lovelace" },
-          { id: "u2", full_name: "Grace Hopper" },
-        ],
-      });
+      return Promise.resolve({ data: [], info: { more_records: false } });
     });
     zoho.CRM.API.searchRecord.mockResolvedValue({
       data: [
@@ -152,10 +155,9 @@ describe("App Zoho integration", () => {
       RecordID: "u1",
     });
     expect(zoho.CRM.API.getOrgVariable).toHaveBeenCalledWith("recent_colors");
-    expect(zoho.CRM.API.getAllRecords).toHaveBeenCalledWith({
-      Entity: "users",
-      sort_order: "asc",
-      per_page: 100,
+    expect(zoho.CRM.API.getAllUsers).toHaveBeenCalledWith({
+      Type: "AllUsers",
+      per_page: 200,
       page: 1,
     });
     await waitFor(() => {
@@ -179,5 +181,19 @@ describe("App Zoho integration", () => {
       );
     });
     expect(zoho.CRM.CONNECTION.invoke).toHaveBeenCalledTimes(2);
+  });
+
+  it("still loads users when recent colors metadata is unavailable", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    zoho.CRM.API.getOrgVariable.mockRejectedValue(new Error("unavailable"));
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("users")).toHaveTextContent(
+        "Ada Lovelace|Grace Hopper"
+      );
+    });
+    expect(zoho.CRM.API.getAllUsers).toHaveBeenCalledOnce();
   });
 });

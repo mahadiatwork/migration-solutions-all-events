@@ -89,44 +89,47 @@ function App() {
       const orgVar = await ZOHO.CRM.API.getOrgVariable("recent_colors");
       const colorsArray = JSON.parse(orgVar?.Success?.Content || "[]");
       setRecentColor(colorsArray);
+    } catch (error) {
+      console.error("Error fetching recent colors metadata:", error);
+    }
 
-      const usersResponse = await ZOHO.CRM.API.getAllRecords({
-        Entity: "users",
-        sort_order: "asc",
-        per_page: 100,
+    try {
+      const usersResponse = await ZOHO.CRM.API.getAllUsers({
+        Type: "AllUsers",
+        per_page: 200,
         page: 1,
       });
-      setUsers(usersResponse.users || []);
-
-      // Fetch Staff Contacts (Staff_Type: equals Active)
-      if (ZOHO?.CRM?.API?.searchRecord) {
-        try {
-          const staffContacts = [];
-          let page = 1;
-          let response;
-          do {
-            response = await ZOHO.CRM.API.searchRecord({
-              Entity: "Contacts",
-              Type: "criteria",
-              Query: "(Staff_Type:equals:Active)",
-              page,
-              per_page: 200,
-            });
-            staffContacts.push(
-              ...(response?.data || []).filter(
-                (contact) =>
-                  contact.Staff_Type === "Active" || contact.Staff_Type === "Staff"
-              )
-            );
-            page += 1;
-          } while (response?.info?.more_records && page <= 10);
-          setStaff(staffContacts);
-        } catch (staffErr) {
-          console.error("Error fetching staff metadata:", staffErr);
-        }
-      }
+      setUsers(usersResponse?.users || []);
     } catch (error) {
-      console.error("Error fetching metadata:", error);
+      console.error("Error fetching users metadata:", error);
+    }
+
+    // Fetch Staff Contacts (Staff_Type: equals Active)
+    if (ZOHO?.CRM?.API?.searchRecord) {
+      try {
+        const staffContacts = [];
+        let page = 1;
+        let response;
+        do {
+          response = await ZOHO.CRM.API.searchRecord({
+            Entity: "Contacts",
+            Type: "criteria",
+            Query: "(Staff_Type:equals:Active)",
+            page,
+            per_page: 200,
+          });
+          staffContacts.push(
+            ...(response?.data || []).filter(
+              (contact) =>
+                contact.Staff_Type === "Active" || contact.Staff_Type === "Staff"
+            )
+          );
+          page += 1;
+        } while (response?.info?.more_records && page <= 10);
+        setStaff(staffContacts);
+      } catch (staffErr) {
+        console.error("Error fetching staff metadata:", staffErr);
+      }
     }
   };
 
